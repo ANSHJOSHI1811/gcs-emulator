@@ -1,0 +1,84 @@
+"""
+Flask app factory and configuration
+"""
+import os
+import logging
+from flask import Flask
+from dotenv import load_dotenv
+
+# Load environment variables
+load_dotenv()
+
+# Initialize SQLAlchemy (moved to avoid circular import)
+db = None
+
+def create_app(config_name: str = None) -> Flask:
+    """
+    Create and configure Flask application
+    
+    Args:
+        config_name: Configuration environment (development, testing, production)
+        
+    Returns:
+        Configured Flask application
+    """
+    from flask_sqlalchemy import SQLAlchemy
+    
+    global db
+    app = Flask(__name__)
+    
+    # Load configuration
+    if config_name is None:
+        config_name = os.getenv("FLASK_ENV", "development")
+    
+    from app.config import config
+    app.config.from_object(config.get(config_name, config["development"]))
+    
+    # Initialize database
+    db = SQLAlchemy()
+    db.init_app(app)
+    
+    # Set up logging
+    setup_logging(app)
+    
+    # Register blueprints
+    register_blueprints(app)
+    
+    # Register error handlers
+    register_error_handlers(app)
+    
+    # Create application context and initialize database
+    with app.app_context():
+        db.create_all()
+    
+    return app
+
+
+def setup_logging(app: Flask) -> None:
+    """Configure logging"""
+    log_level = os.getenv("LOG_LEVEL", "INFO")
+    logging.basicConfig(
+        level=getattr(logging, log_level),
+        format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+    )
+    app.logger.setLevel(getattr(logging, log_level))
+
+
+def register_blueprints(app: Flask) -> None:
+    """Register Flask blueprints"""
+    from app.handlers.buckets import buckets_bp
+    from app.handlers.objects import objects_bp
+    from app.handlers.health import health_bp
+    
+    app.register_blueprint(health_bp)
+    app.register_blueprint(buckets_bp, url_prefix="/storage/v1/b")
+    app.register_blueprint(objects_bp, url_prefix="/storage/v1/b")
+
+
+def register_error_handlers(app: Flask) -> None:
+    """Register error handlers"""
+    from app.handlers.errors import handle_not_found, handle_bad_request, handle_internal_error
+    
+    app.register_error_handler(404, handle_not_found)
+    app.register_error_handler(400, handle_bad_request)
+    app.register_error_handler(500, handle_internal_error)

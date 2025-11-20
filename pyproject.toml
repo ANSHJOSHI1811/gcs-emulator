@@ -1,0 +1,21 @@
+[project]
+name = "gcs-emulator"
+version = "0.1.0"
+description = "Google Cloud Storage Emulator"
+requires-python = ">=3.10"
+
+[tool.black]
+line-length = 100
+target-version = ['py310']
+include = '\.pyi?$'
+exclude = '/(\.git|\.venv|build|dist)/'
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+
+[tool.mypy]
+python_version = "3.10"
+warn_return_any = true
+warn_unused_configs = true
+disallow_untyped_defs = false

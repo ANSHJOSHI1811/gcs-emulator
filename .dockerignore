@@ -1,0 +1,15 @@
+.venv
+.git
+.gitignore
+__pycache__
+*.pyc
+.pytest_cache
+.coverage
+.mypy_cache
+.env
+.env.local
+tests/
+docs/
+README.md
+.DS_Store
+Thumbs.db
