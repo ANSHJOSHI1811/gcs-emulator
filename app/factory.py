@@ -10,7 +10,9 @@ from dotenv import load_dotenv
 load_dotenv()
 
 # Initialize SQLAlchemy (moved to avoid circular import)
-db = None
+from flask_sqlalchemy import SQLAlchemy
+
+db = SQLAlchemy()
 
 def create_app(config_name: str = None) -> Flask:
     """
@@ -22,9 +24,6 @@ def create_app(config_name: str = None) -> Flask:
     Returns:
         Configured Flask application
     """
-    from flask_sqlalchemy import SQLAlchemy
-    
-    global db
     app = Flask(__name__)
     
     # Load configuration
@@ -35,7 +34,6 @@ def create_app(config_name: str = None) -> Flask:
     app.config.from_object(config.get(config_name, config["development"]))
     
     # Initialize database
-    db = SQLAlchemy()
     db.init_app(app)
     
     # Set up logging
@@ -46,6 +44,9 @@ def create_app(config_name: str = None) -> Flask:
     
     # Register error handlers
     register_error_handlers(app)
+    
+    # Register CLI commands
+    register_cli_commands(app)
     
     # Create application context and initialize database
     with app.app_context():
@@ -82,3 +83,9 @@ def register_error_handlers(app: Flask) -> None:
     app.register_error_handler(404, handle_not_found)
     app.register_error_handler(400, handle_bad_request)
     app.register_error_handler(500, handle_internal_error)
+
+
+def register_cli_commands(app: Flask) -> None:
+    """Register Flask CLI commands"""
+    from app.cli import cli
+    app.cli.add_command(cli)

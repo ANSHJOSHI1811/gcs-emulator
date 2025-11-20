@@ -21,7 +21,7 @@ class Object(db.Model):
     metageneration = db.Column(db.BigInteger, default=1)
     created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
-    metadata = db.Column(JSON, default={})
+    meta = db.Column(JSON, default={})
     
     # Indexes
     __table_args__ = (

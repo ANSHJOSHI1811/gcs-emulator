@@ -15,7 +15,7 @@ class Project(db.Model):
     location = db.Column(db.String(50), default="US")
     created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
-    metadata = db.Column(JSON, default={})
+    meta = db.Column(JSON, default={})
     
     # Relationships
     buckets = db.relationship("Bucket", backref="project", lazy=True, cascade="all, delete-orphan")

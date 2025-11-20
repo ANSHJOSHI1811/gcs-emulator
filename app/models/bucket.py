@@ -18,7 +18,7 @@ class Bucket(db.Model):
     versioning_enabled = db.Column(db.Boolean, default=False)
     created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
-    metadata = db.Column(JSON, default={})
+    meta = db.Column(JSON, default={})
     
     # Relationships
     objects = db.relationship("Object", backref="bucket", lazy=True, cascade="all, delete-orphan")
