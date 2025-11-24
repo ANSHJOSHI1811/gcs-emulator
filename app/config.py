@@ -9,6 +9,14 @@ class Config:
     SQLALCHEMY_TRACK_MODIFICATIONS = False
     SECRET_KEY = os.getenv("SECRET_KEY", "dev-key-not-for-production")
     
+    # SDK Compatibility Settings
+    SDK_COMPATIBLE_MODE = os.getenv("SDK_COMPATIBLE_MODE", "true").lower() == "true"
+    MOCK_AUTH_ENABLED = os.getenv("MOCK_AUTH_ENABLED", "true").lower() == "true"
+    EMULATOR_HOST = os.getenv("STORAGE_EMULATOR_HOST", "http://localhost:8080")
+    
+    # Optional: Strict GCS compatibility mode (validates all fields)
+    STRICT_GCS_MODE = os.getenv("STRICT_GCS_MODE", "false").lower() == "true"
+    
     
 class DevelopmentConfig(Config):
     """Development configuration"""

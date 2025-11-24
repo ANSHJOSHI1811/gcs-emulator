@@ -74,6 +74,44 @@ def register_blueprints(app: Flask) -> None:
     app.register_blueprint(health_bp)
     app.register_blueprint(buckets_bp, url_prefix="/storage/v1/b")
     app.register_blueprint(objects_bp, url_prefix="/storage/v1/b")
+    
+    # Register SDK compatibility middleware
+    register_sdk_middleware(app)
+
+
+def register_sdk_middleware(app: Flask) -> None:
+    """Register SDK compatibility middleware"""
+    from flask import request, jsonify
+    
+    @app.before_request
+    def handle_sdk_auth():
+        """Handle SDK authentication headers in mock mode"""
+        if app.config.get('MOCK_AUTH_ENABLED', True):
+            # Log SDK authentication attempts (for debugging)
+            auth_header = request.headers.get('Authorization')
+            if auth_header:
+                app.logger.debug(f"SDK Auth header detected: {auth_header[:20]}...")
+            
+            # Accept any authorization (emulator mode)
+            # In real GCS, this would validate OAuth2 tokens
+            pass
+    
+    @app.route('/storage/v1')
+    def sdk_info():
+        """SDK discovery endpoint - helps verify emulator is running"""
+        return jsonify({
+            "kind": "storage#serviceAccount",
+            "emulator": True,
+            "version": "v1",
+            "endpoints": {
+                "buckets": "/storage/v1/b",
+                "objects": "/storage/v1/b/{bucket}/o"
+            },
+            "features": {
+                "mockAuth": app.config.get('MOCK_AUTH_ENABLED', True),
+                "sdkCompatible": app.config.get('SDK_COMPATIBLE_MODE', True)
+            }
+        }), 200
 
 
 def register_error_handlers(app: Flask) -> None:
