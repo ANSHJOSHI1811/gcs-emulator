@@ -44,6 +44,7 @@ htmlcov/
 *.db
 *.sqlite
 *.sqlite3
+gcs_emulator.db
 
 # Storage
 storage/
@@ -70,3 +71,6 @@ gcp-key*.json
 .credentials/
 .gcp/
 .aws/
+
+# PostgreSQL setup files
+setup_db.sql

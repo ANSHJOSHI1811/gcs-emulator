@@ -3,6 +3,7 @@ Bucket service - Bucket business logic
 """
 import uuid
 from sqlalchemy.exc import IntegrityError
+from psycopg2.errors import UniqueViolation
 from app.factory import db
 from app.models.bucket import Bucket
 
@@ -46,13 +47,17 @@ class BucketService:
             Created Bucket object
             
         Raises:
-            ValueError: If input is invalid
-            IntegrityError: If bucket name already exists
+            ValueError: If input is invalid or bucket already exists
         """
         if not project_id:
             raise ValueError("project_id is required")
         if not name:
             raise ValueError("Bucket name is required")
+        
+        # Check if bucket already exists
+        existing = Bucket.query.filter_by(name=name).first()
+        if existing:
+            raise ValueError(f"Bucket name '{name}' already exists")
         
         # Generate unique ID
         bucket_id = f"{name}-{uuid.uuid4().hex[:8]}"
@@ -71,9 +76,9 @@ class BucketService:
             db.session.add(bucket)
             db.session.commit()
             return bucket
-        except IntegrityError:
+        except Exception as e:
             db.session.rollback()
-            raise ValueError(f"Bucket name '{name}' already exists")
+            raise ValueError(f"Failed to create bucket: {str(e)}")
     
     @staticmethod
     def get_bucket(bucket_name: str):
