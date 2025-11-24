@@ -2,8 +2,6 @@
 Bucket service - Bucket business logic
 """
 import uuid
-from sqlalchemy.exc import IntegrityError
-from psycopg2.errors import UniqueViolation
 from app.factory import db
 from app.models.bucket import Bucket
 

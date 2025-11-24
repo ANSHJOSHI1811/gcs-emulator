@@ -74,3 +74,9 @@ gcp-key*.json
 
 # PostgreSQL setup files
 setup_db.sql
+
+# Test files
+test_endpoints.py
+capture_gcs_responses.py
+gcp_sdk_explorer.py
+gcs_api_responses.json
