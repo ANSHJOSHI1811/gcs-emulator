@@ -50,6 +50,9 @@ gcs_emulator.db
 storage/
 !storage/.gitkeep
 
+# Instance
+instance/
+
 # Environment
 .env
 .env.local
