@@ -4,7 +4,7 @@ Object handlers - Flask routes for object operations
 from flask import Blueprint, request, jsonify, send_file
 from io import BytesIO
 from app.services.object_service import ObjectService
-from app.utils.validators import is_valid_object_name
+from app.validators.object_validators import is_valid_object_name
 
 objects_bp = Blueprint("objects", __name__)
 

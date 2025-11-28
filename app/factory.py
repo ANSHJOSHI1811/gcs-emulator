@@ -5,6 +5,7 @@ import os
 import logging
 from flask import Flask
 from dotenv import load_dotenv
+from app.logging.middleware import setup_request_logging
 
 # Load environment variables
 load_dotenv()
@@ -39,6 +40,9 @@ def create_app(config_name: str = None) -> Flask:
     # Set up logging
     setup_logging(app)
     
+    # Setup request logging middleware
+    setup_request_logging(app)
+    
     # Register blueprints
     register_blueprints(app)
     
@@ -67,7 +71,7 @@ def setup_logging(app: Flask) -> None:
 
 def register_blueprints(app: Flask) -> None:
     """Register Flask blueprints"""
-    from app.handlers.buckets import buckets_bp
+    from app.routes.bucket_routes import buckets_bp
     from app.handlers.objects import objects_bp
     from app.handlers.health import health_bp
     
@@ -126,4 +130,4 @@ def register_error_handlers(app: Flask) -> None:
 def register_cli_commands(app: Flask) -> None:
     """Register Flask CLI commands"""
     from app.cli import cli
-    app.cli.add_command(cli)
+    cli(app)

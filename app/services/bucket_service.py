@@ -2,8 +2,10 @@
 Bucket service - Bucket business logic
 """
 import uuid
+import time
 from app.factory import db
 from app.models.bucket import Bucket
+from app.logging import log_service_stage, log_repository_stage
 
 
 class BucketService:
@@ -24,7 +26,28 @@ class BucketService:
             ValueError: If project_id is invalid
         """
         BucketService._validate_project_id(project_id)
-        return Bucket.query.filter_by(project_id=project_id).all()
+        
+        log_repository_stage(
+            message="Database query executing",
+            details={
+                "operation": "SELECT",
+                "table": "buckets",
+                "filter": f"project_id={project_id}"
+            }
+        )
+        
+        buckets = Bucket.query.filter_by(project_id=project_id).all()
+        
+        log_repository_stage(
+            message="Database query completed",
+            details={
+                "operation": "SELECT",
+                "table": "buckets",
+                "records_returned": len(buckets)
+            }
+        )
+        
+        return buckets
     
     @staticmethod
     def create_bucket(project_id: str, name: str, location: str = "US", 
@@ -45,12 +68,33 @@ class BucketService:
         Raises:
             ValueError: If input is invalid or bucket already exists
         """
+        start_time = time.time()
+        
+        log_service_stage(
+            message="Service create_bucket executing business logic",
+            details={
+                "service": "BucketService",
+                "method": "create_bucket",
+                "project_id": project_id,
+                "bucket_name": name,
+                "location": location,
+                "storage_class": storage_class
+            }
+        )
+        
         # Validate inputs
         BucketService._validate_project_id(project_id)
         BucketService._validate_bucket_name(name)
         
         # Ensure bucket name is unique across all projects
         BucketService._check_bucket_uniqueness(name)
+        
+        log_service_stage(
+            message="Business validations passed - creating bucket",
+            details={
+                "business_rules": ["project_validation", "name_validation", "uniqueness_check"]
+            }
+        )
         
         # Create bucket instance with generated unique ID
         bucket = BucketService._build_bucket_instance(
@@ -59,6 +103,18 @@ class BucketService:
         
         # Persist to database
         BucketService._save_bucket(bucket)
+        
+        duration_ms = (time.time() - start_time) * 1000
+        log_service_stage(
+            message="Service create_bucket completed successfully",
+            duration_ms=duration_ms,
+            details={
+                "generated_id": bucket.id,
+                "bucket_name": bucket.name,
+                "project_id": bucket.project_id
+            }
+        )
+        
         return bucket
     
     @staticmethod
@@ -76,7 +132,29 @@ class BucketService:
             ValueError: If bucket_name is invalid
         """
         BucketService._validate_bucket_name(bucket_name)
-        return Bucket.query.filter_by(name=bucket_name).first()
+        
+        log_repository_stage(
+            message="Database query executing",
+            details={
+                "operation": "SELECT",
+                "table": "buckets",
+                "filter": f"name={bucket_name}"
+            }
+        )
+        
+        bucket = Bucket.query.filter_by(name=bucket_name).first()
+        
+        log_repository_stage(
+            message="Database query completed",
+            details={
+                "operation": "SELECT",
+                "table": "buckets",
+                "records_found": 1 if bucket else 0,
+                "bucket_exists": bucket is not None
+            }
+        )
+        
+        return bucket
     
     @staticmethod
     def delete_bucket(bucket_name: str):
@@ -99,9 +177,45 @@ class BucketService:
         # GCS requires buckets to be empty before deletion
         BucketService._ensure_bucket_is_empty(bucket)
         
-        db.session.delete(bucket)
-        db.session.commit()
-        return True
+        log_repository_stage(
+            message="Database delete operation executing",
+            details={
+                "operation": "DELETE",
+                "table": "buckets",
+                "bucket_id": bucket.id,
+                "bucket_name": bucket.name
+            }
+        )
+        
+        try:
+            db.session.delete(bucket)
+            db.session.commit()
+            
+            log_repository_stage(
+                message="Database delete operation completed",
+                details={
+                    "operation": "DELETE",
+                    "table": "buckets",
+                    "records_affected": 1,
+                    "bucket_id": bucket.id
+                }
+            )
+            
+            return True
+        except Exception as db_error:
+            db.session.rollback()
+            
+            log_repository_stage(
+                message="Database delete operation failed",
+                details={
+                    "operation": "DELETE",
+                    "table": "buckets",
+                    "error": str(db_error),
+                    "rollback_performed": True
+                }
+            )
+            
+            raise ValueError(f"Failed to delete bucket: {str(db_error)}")
     
     # ========== Private Helper Methods ==========
     
@@ -154,11 +268,42 @@ class BucketService:
     @staticmethod
     def _save_bucket(bucket: Bucket) -> None:
         """Persist bucket to database with error handling"""
+        log_repository_stage(
+            message="Database operation starting",
+            details={
+                "operation": "INSERT",
+                "table": "buckets",
+                "bucket_id": bucket.id,
+                "bucket_name": bucket.name
+            }
+        )
+        
         try:
             db.session.add(bucket)
             db.session.commit()
+            
+            log_repository_stage(
+                message="Database operation completed successfully",
+                details={
+                    "operation": "INSERT",
+                    "table": "buckets",
+                    "records_affected": 1,
+                    "bucket_id": bucket.id
+                }
+            )
         except Exception as db_error:
             db.session.rollback()
+            
+            log_repository_stage(
+                message="Database operation failed",
+                details={
+                    "operation": "INSERT",
+                    "table": "buckets",
+                    "error": str(db_error),
+                    "rollback_performed": True
+                }
+            )
+            
             raise ValueError(f"Failed to create bucket: {str(db_error)}")
     
     @staticmethod

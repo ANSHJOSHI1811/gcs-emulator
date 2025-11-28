@@ -1,9 +1,11 @@
 """
 Bucket model - represents a GCS bucket
 """
+import time
 from datetime import datetime
 from sqlalchemy.dialects.postgresql import JSON
 from app.factory import db
+from app.logging import log_formatter_stage
 
 
 class Bucket(db.Model):
@@ -33,7 +35,19 @@ class Bucket(db.Model):
     
     def to_dict(self) -> dict:
         """Convert to dictionary"""
-        return {
+        start_time = time.time()
+        
+        log_formatter_stage(
+            message="Model to_dict serialization starting",
+            details={
+                "model": "Bucket",
+                "bucket_id": self.id,
+                "bucket_name": self.name,
+                "operation": "model_to_dict"
+            }
+        )
+        
+        result = {
             "id": self.id,
             "name": self.name,
             "projectNumber": self.project_id,
@@ -42,3 +56,17 @@ class Bucket(db.Model):
             "timeCreated": self.created_at.isoformat() + "Z",
             "updated": self.updated_at.isoformat() + "Z",
         }
+        
+        duration_ms = (time.time() - start_time) * 1000
+        log_formatter_stage(
+            message="Model to_dict serialization completed",
+            duration_ms=duration_ms,
+            details={
+                "model": "Bucket",
+                "fields_serialized": len(result),
+                "gcs_api_compliant": True,
+                "includes_timestamps": True
+            }
+        )
+        
+        return result
