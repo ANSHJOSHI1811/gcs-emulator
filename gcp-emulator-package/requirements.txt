@@ -1,0 +1,11 @@
+Flask==2.3.3
+Werkzeug==2.3.7
+SQLAlchemy==2.0.21
+Flask-SQLAlchemy==3.0.5
+alembic==1.12.1
+psycopg2-binary==2.9.9
+python-dotenv==1.0.0
+crcmod==1.7
+google-cloud-storage==2.10.0
+gunicorn==21.2.0
+requests==2.31.0
