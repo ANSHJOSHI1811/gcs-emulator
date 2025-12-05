@@ -58,7 +58,7 @@ export function useBuckets() {
     buckets,
     isLoading,
     error,
-    loadBuckets,
+    refresh: loadBuckets,
     handleCreateBucket,
     handleDeleteBucket,
   };

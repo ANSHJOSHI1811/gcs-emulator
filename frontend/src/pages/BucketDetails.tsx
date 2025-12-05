@@ -100,8 +100,8 @@ const BucketDetails = () => {
               </tr>
             </thead>
             <tbody className="bg-white divide-y divide-gray-200">
-              {paginatedObjects.map((obj) => (
-                <tr key={`${obj.name}-${obj.generation}`}>
+              {paginatedObjects.map((obj, index) => (
+                <tr key={`${obj.name}-${obj.generation}-${index}`}>
                   <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
                     <Link to={`/buckets/${bucketName}/objects/${encodeURIComponent(obj.name)}`} className="text-blue-600 hover:underline">
                       {obj.name}

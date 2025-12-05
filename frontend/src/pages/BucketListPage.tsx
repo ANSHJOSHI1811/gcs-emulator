@@ -21,7 +21,7 @@ const STORAGE_CLASS_OPTIONS = [
 ];
 
 export default function BucketListPage() {
-  const { buckets, loadBuckets, isLoading, error, handleDeleteBucket } = useBuckets();
+  const { buckets, refresh: loadBuckets, isLoading, error, handleDeleteBucket } = useBuckets();
   const [isCreateModalOpen, setCreateModalOpen] = useState(false);
   const [isDeleteModalOpen, setDeleteModalOpen] = useState(false);
   const [selectedBucket, setSelectedBucket] = useState<Bucket | null>(null);
@@ -130,7 +130,7 @@ export default function BucketListPage() {
         onClose={() => setDeleteModalOpen(false)}
         onConfirm={confirmDelete}
         title="Delete Bucket"
-        message={`Are you sure you want to delete the bucket "${selectedBucket?.name}"? This action cannot be undone.`}
+        description={`Are you sure you want to delete the bucket "${selectedBucket?.name}"? This action cannot be undone.`}
       />
     </div>
   );

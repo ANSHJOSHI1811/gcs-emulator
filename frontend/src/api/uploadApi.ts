@@ -1,7 +1,5 @@
-import apiClient from "./client";
+import { apiClient, PROJECT_ID } from "./client";
 import { UploadResponse } from "../types";
-
-const PROJECT_ID = "test-project";
 
 export const uploadMedia = async (
   bucketName: string,

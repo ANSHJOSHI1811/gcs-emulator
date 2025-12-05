@@ -14,9 +14,10 @@ type CreateBucketFormData = z.infer<typeof createBucketSchema>;
 interface CreateBucketModalProps {
   isOpen: boolean;
   onClose: () => void;
+  onBucketCreated: () => void;
 }
 
-export default function CreateBucketModal({ isOpen, onClose }: CreateBucketModalProps) {
+export default function CreateBucketModal({ isOpen, onClose, onBucketCreated }: CreateBucketModalProps) {
   const { handleCreateBucket } = useBuckets();
   const {
     register,
@@ -31,7 +32,7 @@ export default function CreateBucketModal({ isOpen, onClose }: CreateBucketModal
     try {
       await handleCreateBucket(data.name);
       reset();
-      onClose();
+      onBucketCreated(); // Use the callback
     } catch (error) {
       // Error is already handled by toast in the hook
     }

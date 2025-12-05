@@ -1,7 +1,6 @@
 import { useState, useCallback, useEffect } from 'react';
 import { GCSObject, ObjectVersion } from '../types';
 import {
-  getObjectMetadata,
   listObjectVersions,
   deleteObjectVersion as apiDeleteObjectVersion,
 } from '../api/objectVersionsApi';
@@ -19,22 +18,34 @@ export const useObjectDetails = (bucketName?: string, objectName?: string) => {
     setError(null);
 
     try {
-      const [meta, vers] = await Promise.all([
-        getObjectMetadata(bucketName, objectName),
-        listObjectVersions(bucketName, objectName),
-      ]);
+      // Single, reliable call to get all versions
+      const vers = await listObjectVersions(bucketName);
       
-      setMetadata(meta);
-      
-      const versionItems = vers.items || [];
-      // Mark the latest version
-      if (versionItems.length > 0 && meta.generation) {
-        const latest = versionItems.find(v => v.generation === meta.generation);
-        if (latest) {
-          latest.isLatest = true;
-        }
+      const allVersions = (Array.isArray(vers) ? vers : vers.items || []).filter(
+        (v) => v.name === objectName
+      );
+
+      if (allVersions.length === 0) {
+        // If no versions are found, it might be a non-versioned object or an error.
+        // For now, we'll show "not found". A more robust solution might try a non-versioned fetch.
+        setError("Object not found or has no versions.");
+        setVersions([]);
+        setMetadata(null);
+        return;
       }
-      setVersions(versionItems);
+
+      // Find the latest version. The GCS API doesn't explicitly flag the latest in this view,
+      // so we often determine it by the most recent 'updated' timestamp.
+      // A simpler way is to find the one with the largest generation number.
+      const latestVersion = allVersions.reduce((a, b) =>
+        new Date(a.updated) > new Date(b.updated) ? a : b
+      );
+
+      // Mark the latest version in the list
+      latestVersion.isLatest = true;
+      
+      setMetadata(latestVersion);
+      setVersions(allVersions);
 
     } catch (err) {
       setError((err as Error).message);

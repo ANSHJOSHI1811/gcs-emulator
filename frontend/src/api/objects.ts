@@ -1,28 +1,33 @@
-import apiClient from './client';
+import { apiClient, PROJECT_ID } from './client';
 import { GCSObject } from '../types';
 
+interface BackendObject {
+  name: string;
+  size: string;
+  contentType: string;
+  updated: string;
+  generation: string;
+}
+
 interface ListObjectsResponse {
-  items?: any[];
+  items?: BackendObject[];
 }
 
 export async function listObjects(bucketName: string): Promise<GCSObject[]> {
-  const response = await apiClient.get<ListObjectsResponse>(`/storage/v1/b/${bucketName}/o`);
+  const response = await apiClient.get<ListObjectsResponse>(`/storage/v1/b/${bucketName}/o?project=${PROJECT_ID}`);
   if (!response.data.items) {
     return [];
   }
-  // TODO: The backend response shape is not fully known.
-  // Mapping known fields and leaving others as placeholders.
-  return response.data.items.map((item: any) => ({
-    name: item.name,
+  return response.data.items.map((item) => ({
+    ...item,
+    bucket: bucketName,
     size: parseInt(item.size, 10),
-    contentType: item.contentType,
-    updated: item.updated,
-    generation: item.generation,
   }));
 }
 
 export async function downloadObject(bucketName: string, objectName: string, generation?: string): Promise<Blob> {
-  let url = `/storage/v1/b/${bucketName}/o/${objectName}?alt=media`;
+  const encodedObjectName = encodeURIComponent(objectName);
+  let url = `/storage/v1/b/${bucketName}/o/${encodedObjectName}?alt=media&project=${PROJECT_ID}`;
   if (generation) {
     url += `&generation=${generation}`;
   }
@@ -33,9 +38,10 @@ export async function downloadObject(bucketName: string, objectName: string, gen
 }
 
 export async function deleteObject(bucketName: string, objectName: string, generation?: string): Promise<void> {
-  let url = `/storage/v1/b/${bucketName}/o/${objectName}`;
+  const encodedObjectName = encodeURIComponent(objectName);
+  let url = `/storage/v1/b/${bucketName}/o/${encodedObjectName}?project=${PROJECT_ID}`;
   if (generation) {
-    url += `?generation=${generation}`;
+    url += `&generation=${generation}`;
   }
   await apiClient.delete(url);
 }
