@@ -75,7 +75,7 @@ export default function Dashboard() {
               <div className="flex justify-between items-center mb-4">
                 <h2 className="text-xl font-semibold text-gray-800">Recent Buckets</h2>
                 <button
-                  onClick={() => navigate('/buckets')}
+                  onClick={() => navigate('/services/storage/buckets')}
                   className="text-sm font-medium text-blue-600 hover:text-blue-800"
                 >
                   View All

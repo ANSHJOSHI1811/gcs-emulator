@@ -1,10 +1,10 @@
 import { useState, useEffect } from 'react';
 import { X, Trash2, Plus } from 'lucide-react';
-import { ACLValue, LifecycleRule } from '../types';
+import { ACLValue } from '../types';
 import { updateBucketACL } from '../api/buckets';
-import { listLifecycleRules, deleteLifecycleRule } from '../api/lifecycle';
+import { getLifecycleRules, updateLifecycleRules, LifecycleRule } from '../api/lifecycle';
 import toast from 'react-hot-toast';
-import CreateLifecycleRuleModal from './CreateLifecycleRuleModal.tsx';
+import CreateLifecycleRuleModal from './CreateLifecycleRuleModal';
 
 interface BucketSettingsModalProps {
   isOpen: boolean;
@@ -34,7 +34,7 @@ const BucketSettingsModal = ({ isOpen, onClose, bucketName, currentACL, onACLUpd
   const loadLifecycleRules = async () => {
     setIsLoadingRules(true);
     try {
-      const rules = await listLifecycleRules(bucketName);
+      const rules = await getLifecycleRules(bucketName);
       setLifecycleRules(rules);
     } catch (err) {
       console.error('Failed to load lifecycle rules:', err);
@@ -58,11 +58,12 @@ const BucketSettingsModal = ({ isOpen, onClose, bucketName, currentACL, onACLUpd
     }
   };
 
-  const handleDeleteRule = async (ruleId: string) => {
+  const handleDeleteRule = async (index: number) => {
     if (!window.confirm('Are you sure you want to delete this lifecycle rule?')) return;
     
     try {
-      await deleteLifecycleRule(ruleId);
+      const updatedRules = lifecycleRules.filter((_, i) => i !== index);
+      await updateLifecycleRules(bucketName, updatedRules);
       toast.success('✅ Lifecycle rule deleted');
       loadLifecycleRules();
     } catch (err) {
@@ -157,8 +158,8 @@ const BucketSettingsModal = ({ isOpen, onClose, bucketName, currentACL, onACLUpd
                         </tr>
                       </thead>
                       <tbody className="bg-white divide-y divide-gray-200">
-                        {lifecycleRules.map((rule) => (
-                          <tr key={rule.ruleId}>
+                        {lifecycleRules.map((rule, index) => (
+                          <tr key={index}>
                             <td className="px-4 py-3 whitespace-nowrap text-sm font-medium text-gray-900">
                               <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
                                 rule.action === 'Delete' ? 'bg-red-100 text-red-800' : 'bg-yellow-100 text-yellow-800'
@@ -169,7 +170,7 @@ const BucketSettingsModal = ({ isOpen, onClose, bucketName, currentACL, onACLUpd
                             <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-500">{rule.ageDays} days</td>
                             <td className="px-4 py-3 whitespace-nowrap text-right text-sm font-medium">
                               <button
-                                onClick={() => handleDeleteRule(rule.ruleId)}
+                                onClick={() => handleDeleteRule(index)}
                                 className="text-red-600 hover:text-red-900"
                               >
                                 <Trash2 size={16} />

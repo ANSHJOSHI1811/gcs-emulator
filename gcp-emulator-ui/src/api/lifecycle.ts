@@ -1,25 +1,34 @@
 import { apiClient } from './client';
-import { LifecycleRulesResponse, LifecycleRule, CreateLifecycleRuleRequest } from '../types';
 
-// Phase 4: Lifecycle Rules API
-export async function listLifecycleRules(bucketName?: string): Promise<LifecycleRule[]> {
-  const url = bucketName 
-    ? `/internal/lifecycle/rules?bucket=${bucketName}` 
-    : '/internal/lifecycle/rules';
-  
-  const response = await apiClient.get<LifecycleRulesResponse>(url);
-  return response.data.items || [];
+export interface LifecycleRule {
+  action: 'Delete' | 'Archive';
+  ageDays: number;
 }
 
-export async function createLifecycleRule(rule: CreateLifecycleRuleRequest): Promise<LifecycleRule> {
-  const response = await apiClient.post<LifecycleRule>('/internal/lifecycle/rules', rule);
-  return response.data;
+export interface LifecycleConfig {
+  kind: string;
+  rule: LifecycleRule[];
 }
 
-export async function deleteLifecycleRule(ruleId: string): Promise<void> {
-  await apiClient.delete(`/internal/lifecycle/rules/${ruleId}`);
+// Phase 4: Lifecycle Configuration API (GCS-compatible endpoints)
+export async function getLifecycleRules(bucketName: string): Promise<LifecycleRule[]> {
+  const response = await apiClient.get<LifecycleConfig>(
+    `/storage/v1/b/${bucketName}/lifecycle`
+  );
+  return response.data.rule || [];
 }
 
-export async function evaluateLifecycleRules(): Promise<void> {
-  await apiClient.post('/internal/lifecycle/evaluate');
+export async function updateLifecycleRules(
+  bucketName: string,
+  rules: LifecycleRule[]
+): Promise<LifecycleRule[]> {
+  const response = await apiClient.put<LifecycleConfig>(
+    `/storage/v1/b/${bucketName}/lifecycle`,
+    { rule: rules }
+  );
+  return response.data.rule;
+}
+
+export async function deleteLifecycleConfig(bucketName: string): Promise<void> {
+  await apiClient.delete(`/storage/v1/b/${bucketName}/lifecycle`);
 }

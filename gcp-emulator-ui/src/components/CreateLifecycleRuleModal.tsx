@@ -2,7 +2,7 @@ import { X } from 'lucide-react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
-import { createLifecycleRule } from '../api/lifecycle';
+import { getLifecycleRules, updateLifecycleRules } from '../api/lifecycle';
 import toast from 'react-hot-toast';
 
 const lifecycleRuleSchema = z.object({
@@ -37,11 +37,18 @@ const CreateLifecycleRuleModal = ({ isOpen, onClose, bucketName, onRuleCreated }
 
   const onSubmit = async (data: LifecycleRuleFormData) => {
     try {
-      await createLifecycleRule({
-        bucket: bucketName,
+      // Get existing rules
+      const existingRules = await getLifecycleRules(bucketName);
+      
+      // Add new rule
+      const newRule = {
         action: data.action,
         ageDays: data.ageDays,
-      });
+      };
+      
+      // Update with all rules including the new one
+      await updateLifecycleRules(bucketName, [...existingRules, newRule]);
+      
       toast.success('✅ Lifecycle rule created successfully');
       reset();
       onRuleCreated();

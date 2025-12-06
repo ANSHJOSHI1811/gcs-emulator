@@ -3,6 +3,7 @@ import { Dialog, Transition } from "@headlessui/react";
 import { useUpload } from "../hooks/useUpload";
 import { isValidObjectName, getObjectNameError } from "../utils/validators";
 import toast from "react-hot-toast";
+import { Upload as UploadIcon, File, X } from "lucide-react";
 
 interface UploadObjectModalProps {
   isOpen: boolean;
@@ -25,6 +26,7 @@ export default function UploadObjectModal({
   const [uploadType, setUploadType] = useState<UploadType>("media");
   const { isUploading, uploadMedia, uploadMultipart, uploadResumable } = useUpload();
   const [uploadProgress, setUploadProgress] = useState(0);
+  const [isDragging, setIsDragging] = useState(false);
 
   useEffect(() => {
     if (file) {
@@ -37,8 +39,26 @@ export default function UploadObjectModal({
   }, [file]);
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (e.target.files) {
+    if (e.target.files && e.target.files[0]) {
       setFile(e.target.files[0]);
+    }
+  };
+
+  const handleDragOver = (e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDragging(true);
+  };
+
+  const handleDragLeave = () => {
+    setIsDragging(false);
+  };
+
+  const handleDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDragging(false);
+    
+    if (e.dataTransfer.files && e.dataTransfer.files[0]) {
+      setFile(e.dataTransfer.files[0]);
     }
   };
 
@@ -46,6 +66,14 @@ export default function UploadObjectModal({
     const value = e.target.value;
     setObjectName(value);
     setObjectNameError(getObjectNameError(value));
+  };
+
+  const formatFileSize = (bytes: number) => {
+    if (bytes === 0) return '0 Bytes';
+    const k = 1024;
+    const sizes = ['Bytes', 'KB', 'MB', 'GB'];
+    const i = Math.floor(Math.log(bytes) / Math.log(k));
+    return Math.round((bytes / Math.pow(k, i)) * 100) / 100 + ' ' + sizes[i];
   };
 
   const handleUpload = async () => {
@@ -63,6 +91,8 @@ export default function UploadObjectModal({
       }
       toast.success(`✅ File "${objectName}" uploaded successfully!`);
       setUploadProgress(0);
+      setFile(null);
+      setObjectName("");
       onUploaded();
       onClose();
     } catch (error: any) {
@@ -102,28 +132,76 @@ export default function UploadObjectModal({
               leaveFrom="opacity-100 scale-100"
               leaveTo="opacity-0 scale-95"
             >
-              <Dialog.Panel className="w-full max-w-md transform overflow-hidden rounded-2xl bg-white p-6 text-left align-middle shadow-xl transition-all">
+              <Dialog.Panel className="w-full max-w-2xl transform overflow-hidden rounded-2xl bg-white p-6 text-left align-middle shadow-xl transition-all">
                 <Dialog.Title
                   as="h3"
-                  className="text-lg font-medium leading-6 text-gray-900"
+                  className="text-xl font-semibold leading-6 text-gray-900 mb-6"
                 >
-                  Upload Object
+                  Upload Object to {bucketName}
                 </Dialog.Title>
-                <div className="mt-4 space-y-4">
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700">
-                      File
-                    </label>
+                <div className="space-y-6">
+                  {/* Drag & Drop Zone */}
+                  <div
+                    onDragOver={handleDragOver}
+                    onDragLeave={handleDragLeave}
+                    onDrop={handleDrop}
+                    className={`relative border-2 border-dashed rounded-xl p-8 transition-colors ${
+                      isDragging
+                        ? 'border-blue-500 bg-blue-50'
+                        : file
+                        ? 'border-green-300 bg-green-50'
+                        : 'border-gray-300 bg-gray-50 hover:border-gray-400'
+                    }`}
+                  >
                     <input
                       type="file"
                       onChange={handleFileChange}
-                      className="mt-1 block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-violet-50 file:text-violet-700 hover:file:bg-violet-100"
+                      className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+                      id="file-upload"
                     />
+                    
+                    {!file ? (
+                      <div className="text-center">
+                        <UploadIcon className="mx-auto h-12 w-12 text-gray-400" />
+                        <p className="mt-2 text-sm font-medium text-gray-900">
+                          Drop your file here or click to browse
+                        </p>
+                        <p className="mt-1 text-xs text-gray-500">
+                          Supports all file types
+                        </p>
+                      </div>
+                    ) : (
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-3">
+                          <div className="p-3 bg-white rounded-lg border border-green-200">
+                            <File className="w-6 h-6 text-green-600" />
+                          </div>
+                          <div>
+                            <p className="text-sm font-medium text-gray-900 truncate max-w-md">
+                              {file.name}
+                            </p>
+                            <p className="text-xs text-gray-500">{formatFileSize(file.size)}</p>
+                          </div>
+                        </div>
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setFile(null);
+                            setObjectName("");
+                          }}
+                          className="p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                        >
+                          <X className="w-5 h-5" />
+                        </button>
+                      </div>
+                    )}
                   </div>
+
+                  {/* Object Name Input */}
                   <div>
                     <label
                       htmlFor="objectName"
-                      className="block text-sm font-medium text-gray-700"
+                      className="block text-sm font-medium text-gray-700 mb-2"
                     >
                       Object Name
                     </label>
@@ -132,91 +210,95 @@ export default function UploadObjectModal({
                       id="objectName"
                       value={objectName}
                       onChange={handleObjectNameChange}
-                      className={`mt-1 block w-full rounded-md shadow-sm sm:text-sm ${
+                      placeholder="Enter object name..."
+                      className={`block w-full rounded-lg shadow-sm sm:text-sm px-4 py-3 border ${
                         objectNameError
                           ? 'border-red-300 focus:border-red-500 focus:ring-red-500'
-                          : 'border-gray-300 focus:border-indigo-500 focus:ring-indigo-500'
+                          : 'border-gray-300 focus:border-blue-500 focus:ring-blue-500'
                       }`}
                     />
                     {objectNameError && (
-                      <p className="mt-1 text-sm text-red-600">{objectNameError}</p>
+                      <p className="mt-2 text-sm text-red-600 flex items-center gap-1">
+                        <span>⚠️</span>
+                        {objectNameError}
+                      </p>
                     )}
-                    <p className="mt-1 text-xs text-gray-500">
-                      Allowed: letters, numbers, hyphens, underscores, forward slashes. No path traversal (..), backslashes, or drive letters.
+                    <p className="mt-2 text-xs text-gray-500">
+                      Letters, numbers, hyphens, underscores, and forward slashes allowed
                     </p>
                   </div>
-                  <fieldset>
-                    <legend className="text-sm font-medium text-gray-900">
-                      Upload Type
+
+                  {/* Upload Type Selection */}
+                  <fieldset className="border border-gray-200 rounded-lg p-4">
+                    <legend className="text-sm font-medium text-gray-900 px-2">
+                      Upload Method
                     </legend>
-                    <div className="mt-2 space-y-2">
-                      <div className="flex items-center">
+                    <div className="mt-3 space-y-3">
+                      <label className="flex items-start gap-3 cursor-pointer group">
                         <input
-                          id="media"
-                          name="upload-type"
                           type="radio"
                           value="media"
                           checked={uploadType === "media"}
                           onChange={() => setUploadType("media")}
-                          className="h-4 w-4 border-gray-300 text-indigo-600 focus:ring-indigo-500"
+                          className="mt-1 h-4 w-4 border-gray-300 text-blue-600 focus:ring-blue-500"
                         />
-                        <label
-                          htmlFor="media"
-                          className="ml-3 block text-sm font-medium text-gray-700"
-                        >
-                          Media upload
-                        </label>
-                      </div>
-                      <div className="flex items-center">
+                        <div className="flex-1">
+                          <span className="block text-sm font-medium text-gray-900 group-hover:text-blue-600">
+                            Media Upload
+                          </span>
+                          <span className="block text-xs text-gray-500">Best for small files</span>
+                        </div>
+                      </label>
+                      
+                      <label className="flex items-start gap-3 cursor-pointer group">
                         <input
-                          id="multipart"
-                          name="upload-type"
                           type="radio"
                           value="multipart"
                           checked={uploadType === "multipart"}
                           onChange={() => setUploadType("multipart")}
-                          className="h-4 w-4 border-gray-300 text-indigo-600 focus:ring-indigo-500"
+                          className="mt-1 h-4 w-4 border-gray-300 text-blue-600 focus:ring-blue-500"
                         />
-                        <label
-                          htmlFor="multipart"
-                          className="ml-3 block text-sm font-medium text-gray-700"
-                        >
-                          Multipart upload
-                        </label>
-                      </div>
-                      <div className="flex items-center">
+                        <div className="flex-1">
+                          <span className="block text-sm font-medium text-gray-900 group-hover:text-blue-600">
+                            Multipart Upload
+                          </span>
+                          <span className="block text-xs text-gray-500">For files with metadata</span>
+                        </div>
+                      </label>
+                      
+                      <label className="flex items-start gap-3 cursor-pointer group">
                         <input
-                          id="resumable"
-                          name="upload-type"
                           type="radio"
                           value="resumable"
                           checked={uploadType === "resumable"}
                           onChange={() => setUploadType("resumable")}
-                          className="h-4 w-4 border-gray-300 text-indigo-600 focus:ring-indigo-500"
+                          className="mt-1 h-4 w-4 border-gray-300 text-blue-600 focus:ring-blue-500"
                         />
-                        <label
-                          htmlFor="resumable"
-                          className="ml-3 block text-sm font-medium text-gray-700"
-                        >
-                          Resumable upload (for large files &gt; 5MB)
-                          {file && file.size > 5 * 1024 * 1024 && (
-                            <span className="ml-2 text-xs text-green-600 font-semibold">
-                              Recommended
-                            </span>
-                          )}
-                        </label>
-                      </div>
+                        <div className="flex-1">
+                          <span className="block text-sm font-medium text-gray-900 group-hover:text-blue-600">
+                            Resumable Upload
+                            {file && file.size > 5 * 1024 * 1024 && (
+                              <span className="ml-2 text-xs bg-green-100 text-green-700 px-2 py-0.5 rounded-full font-semibold">
+                                Recommended
+                              </span>
+                            )}
+                          </span>
+                          <span className="block text-xs text-gray-500">For large files &gt; 5MB</span>
+                        </div>
+                      </label>
                     </div>
                   </fieldset>
+
+                  {/* Progress Bar */}
                   {uploadType === "resumable" && uploadProgress > 0 && (
-                    <div className="mt-4">
-                      <div className="flex justify-between mb-1">
-                        <span className="text-sm font-medium text-gray-700">Upload Progress</span>
-                        <span className="text-sm font-medium text-gray-700">{uploadProgress}%</span>
+                    <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+                      <div className="flex justify-between items-center mb-2">
+                        <span className="text-sm font-medium text-blue-900">Uploading...</span>
+                        <span className="text-sm font-semibold text-blue-700">{uploadProgress}%</span>
                       </div>
-                      <div className="w-full bg-gray-200 rounded-full h-2.5">
+                      <div className="w-full bg-blue-200 rounded-full h-3 overflow-hidden">
                         <div
-                          className="bg-blue-600 h-2.5 rounded-full transition-all duration-300"
+                          className="bg-blue-600 h-3 rounded-full transition-all duration-300 ease-out"
                           style={{ width: `${uploadProgress}%` }}
                         ></div>
                       </div>
@@ -224,21 +306,23 @@ export default function UploadObjectModal({
                   )}
                 </div>
 
-                <div className="mt-6 flex justify-end space-x-2">
+                {/* Actions */}
+                <div className="mt-8 flex justify-end gap-3">
                   <button
                     type="button"
-                    className="inline-flex justify-center rounded-md border border-transparent bg-gray-100 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-gray-500 focus-visible:ring-offset-2"
+                    className="px-5 py-2.5 rounded-lg border-2 border-gray-300 text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors"
                     onClick={onClose}
+                    disabled={isUploading}
                   >
                     Cancel
                   </button>
                   <button
                     type="button"
-                    className="inline-flex justify-center rounded-md border border-transparent bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 disabled:bg-gray-300 disabled:cursor-not-allowed"
+                    className="px-6 py-2.5 rounded-lg border-2 border-transparent bg-blue-600 text-sm font-medium text-white hover:bg-blue-700 transition-colors disabled:bg-gray-300 disabled:cursor-not-allowed shadow-sm"
                     onClick={handleUpload}
                     disabled={!file || !objectName || !!objectNameError || isUploading}
                   >
-                    {isUploading ? "Uploading..." : "Upload"}
+                    {isUploading ? "Uploading..." : "Upload File"}
                   </button>
                 </div>
               </Dialog.Panel>

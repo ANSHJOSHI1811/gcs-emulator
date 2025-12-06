@@ -1,6 +1,6 @@
 import { Bucket } from "../../types";
 import { formatDistanceToNow } from "date-fns";
-import { Trash2 } from "lucide-react";
+import { Trash2, HardDrive, MapPin, Clock } from "lucide-react";
 import { Link } from "react-router-dom";
 
 interface BucketCardProps {
@@ -9,7 +9,9 @@ interface BucketCardProps {
 }
 
 export default function BucketCard({ bucket, onDelete }: BucketCardProps) {
-  const handleDelete = () => {
+  const handleDelete = (e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
     const confirmed = window.confirm(
       `Delete bucket "${bucket.name}"?\n\n` +
       `⚠️ Warning: This will permanently delete the bucket and ALL objects inside it.\n\n` +
@@ -21,25 +23,63 @@ export default function BucketCard({ bucket, onDelete }: BucketCardProps) {
     }
   };
 
+  const getStorageClassColor = (storageClass: string) => {
+    switch (storageClass) {
+      case 'STANDARD':
+        return 'bg-blue-50 text-blue-700 border-blue-200';
+      case 'NEARLINE':
+        return 'bg-emerald-50 text-emerald-700 border-emerald-200';
+      case 'COLDLINE':
+        return 'bg-purple-50 text-purple-700 border-purple-200';
+      case 'ARCHIVE':
+        return 'bg-amber-50 text-amber-700 border-amber-200';
+      default:
+        return 'bg-gray-50 text-gray-700 border-gray-200';
+    }
+  };
+
   return (
-    <div className="bg-white rounded-lg shadow-md hover:shadow-xl hover:border-blue-500 border-2 border-transparent transition-all duration-300 p-4 flex flex-col justify-between">
-      <Link to={`/buckets/${bucket.name}`} className="flex-grow">
-        <h3 className="text-lg font-semibold text-gray-800 truncate">{bucket.name}</h3>
-        <p className="text-sm text-gray-500">{bucket.location}</p>
-        <p className="text-sm text-gray-500">{bucket.storageClass}</p>
-        <p className="text-xs text-gray-400 mt-2">
-          Created {formatDistanceToNow(new Date(bucket.timeCreated), { addSuffix: true })}
-        </p>
-      </Link>
-      <div className="mt-4 flex justify-end space-x-2">
+    <Link 
+      to={`/services/storage/buckets/${bucket.name}`}
+      className="block bg-white rounded-lg shadow-[0_1px_3px_rgba(0,0,0,0.07)] hover:shadow-[0_4px_12px_rgba(0,0,0,0.12)] border border-gray-200/60 hover:border-blue-400/60 transition-all duration-200 overflow-hidden group relative"
+    >
+      <div className="p-4">
+        {/* Top Row: Icon + Name + Created Date */}
+        <div className="flex items-center gap-3 mb-3">
+          <div className="flex items-center justify-center w-9 h-9 bg-blue-50 rounded-lg group-hover:bg-blue-100 transition-colors flex-shrink-0">
+            <HardDrive className="w-5 h-5 text-blue-600" />
+          </div>
+          <h3 className="text-[15px] font-bold text-gray-900 truncate flex-1 group-hover:text-blue-600 transition-colors">
+            {bucket.name}
+          </h3>
+          <div className="flex items-center gap-1.5 text-[11px] text-gray-500 flex-shrink-0">
+            <Clock className="w-3.5 h-3.5" />
+            <span className="whitespace-nowrap">
+              {formatDistanceToNow(new Date(bucket.timeCreated), { addSuffix: true })}
+            </span>
+          </div>
+        </div>
+
+        {/* Bottom Row: Storage Class + Location */}
+        <div className="flex items-center gap-3">
+          <span className={`inline-flex items-center text-[11px] font-semibold px-2.5 py-1 rounded-full border shadow-sm ${getStorageClassColor(bucket.storageClass)}`}>
+            {bucket.storageClass}
+          </span>
+          <div className="flex items-center gap-1.5 text-[12px] text-gray-600">
+            <MapPin className="w-3.5 h-3.5 text-gray-400 flex-shrink-0" />
+            <span className="truncate">{bucket.location}</span>
+          </div>
+        </div>
+
+        {/* Delete Button - Bottom Right */}
         <button
           onClick={handleDelete}
-          className="p-2 text-gray-500 hover:text-red-600"
-          title="Delete Bucket (must be empty)"
+          className="absolute bottom-3 right-3 flex items-center justify-center w-8 h-8 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-all"
+          title="Delete bucket"
         >
-          <Trash2 size={18} />
+          <Trash2 className="w-4 h-4" />
         </button>
       </div>
-    </div>
+    </Link>
   );
 }

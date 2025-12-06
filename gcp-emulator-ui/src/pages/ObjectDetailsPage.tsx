@@ -124,80 +124,99 @@ const ObjectDetailsPage = () => {
 
     return (
       <div className="space-y-6">
-        {/* Metadata Section */}
-        <div>
-          <h1 className="text-2xl font-bold text-gray-900">
-            Object: <span className="font-mono">{metadata.name}</span>
+        {/* Header Section */}
+        <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
+          <h1 className="text-2xl font-bold text-gray-900 mb-4 flex items-center gap-3">
+            <div className="p-2 bg-blue-50 rounded-lg">
+              <svg className="w-6 h-6 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+              </svg>
+            </div>
+            <span className="font-mono text-lg truncate">{metadata.name}</span>
           </h1>
-          <div className="mt-4 p-4 bg-white shadow rounded-lg">
-            <h2 className="text-lg font-semibold text-gray-800 mb-2">Metadata</h2>
-            <dl className="grid grid-cols-1 gap-x-4 gap-y-4 sm:grid-cols-2">
-              <div className="sm:col-span-1">
-                <dt className="text-sm font-medium text-gray-500">Bucket</dt>
-                <dd className="mt-1 text-sm text-gray-900 font-mono">{metadata.bucket}</dd>
-              </div>
-              <div className="sm:col-span-1">
-                <dt className="text-sm font-medium text-gray-500">Size</dt>
-                <dd className="mt-1 text-sm text-gray-900">{(metadata.size / 1024).toFixed(2)} KB</dd>
-              </div>
-              <div className="sm:col-span-1">
-                <dt className="text-sm font-medium text-gray-500">Content Type</dt>
-                <dd className="mt-1 text-sm text-gray-900">{metadata.contentType || 'application/octet-stream'}</dd>
-              </div>
-              <div className="sm:col-span-1">
-                <dt className="text-sm font-medium text-gray-500">Last Modified</dt>
-                <dd className="mt-1 text-sm text-gray-900">{format(new Date(metadata.updated), 'MMM d, yyyy, h:mm a')}</dd>
-              </div>
-              <div className="sm:col-span-1">
-                <dt className="text-sm font-medium text-gray-500">Generation</dt>
-                <dd className="mt-1 text-sm text-gray-900 font-mono">{metadata.generation}</dd>
-              </div>
-              <div className="sm:col-span-1">
-                <dt className="text-sm font-medium text-gray-500">Metageneration</dt>
-                <dd className="mt-1 text-sm text-gray-900 font-mono">{metadata.metageneration}</dd>
-              </div>
-              <div className="sm:col-span-1">
-                <dt className="text-sm font-medium text-gray-500">MD5 Hash</dt>
-                <dd className="mt-1 text-xs text-gray-900 font-mono break-all">{metadata.md5Hash || 'N/A'}</dd>
-              </div>
-              <div className="sm:col-span-1">
-                <dt className="text-sm font-medium text-gray-500">CRC32C</dt>
-                <dd className="mt-1 text-xs text-gray-900 font-mono break-all">{metadata.crc32c || 'N/A'}</dd>
-              </div>
-              {/* Phase 4: Storage Class Indicator */}
-              <div className="sm:col-span-1">
-                <dt className="text-sm font-medium text-gray-500">Storage Class</dt>
-                <dd className="mt-1 text-sm text-gray-900">
-                  {metadata.storageClass === 'ARCHIVE' ? (
-                    <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-yellow-100 text-yellow-800">
-                      ARCHIVE
-                    </span>
-                  ) : (
-                    <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
-                      {metadata.storageClass || 'STANDARD'}
-                    </span>
-                  )}
-                </dd>
-              </div>
-            </dl>
+          
+          {/* Quick Stats */}
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-4">
+            <div className="bg-gray-50 rounded-lg p-3">
+              <p className="text-xs text-gray-500 mb-1">Size</p>
+              <p className="text-lg font-semibold text-gray-900">{(metadata.size / 1024).toFixed(2)} KB</p>
+            </div>
+            <div className="bg-gray-50 rounded-lg p-3">
+              <p className="text-xs text-gray-500 mb-1">Type</p>
+              <p className="text-sm font-medium text-gray-900 truncate">{metadata.contentType || 'binary'}</p>
+            </div>
+            <div className="bg-gray-50 rounded-lg p-3">
+              <p className="text-xs text-gray-500 mb-1">Storage Class</p>
+              <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold ${
+                metadata.storageClass === 'ARCHIVE' 
+                  ? 'bg-yellow-100 text-yellow-800 border border-yellow-200' 
+                  : 'bg-green-100 text-green-800 border border-green-200'
+              }`}>
+                {metadata.storageClass || 'STANDARD'}
+              </span>
+            </div>
+            <div className="bg-gray-50 rounded-lg p-3">
+              <p className="text-xs text-gray-500 mb-1">Generation</p>
+              <span className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-mono font-semibold bg-blue-100 text-blue-800 border border-blue-200">
+                v{metadata.generation}
+              </span>
+            </div>
           </div>
         </div>
 
+        {/* Metadata Section */}
+        <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
+          <h2 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
+            <svg className="w-5 h-5 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+            </svg>
+            Metadata
+          </h2>
+          <dl className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="bg-gray-50 rounded-lg p-4">
+              <dt className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1">Bucket</dt>
+              <dd className="text-sm text-gray-900 font-mono">{metadata.bucket}</dd>
+            </div>
+            <div className="bg-gray-50 rounded-lg p-4">
+              <dt className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1">Last Modified</dt>
+              <dd className="text-sm text-gray-900">{format(new Date(metadata.updated), 'MMM d, yyyy, h:mm a')}</dd>
+            </div>
+            <div className="bg-gray-50 rounded-lg p-4">
+              <dt className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1">MD5 Hash</dt>
+              <dd className="text-xs text-gray-900 font-mono break-all">{metadata.md5Hash || 'N/A'}</dd>
+            </div>
+            <div className="bg-gray-50 rounded-lg p-4">
+              <dt className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1">CRC32C</dt>
+              <dd className="text-xs text-gray-900 font-mono break-all">{metadata.crc32c || 'N/A'}</dd>
+            </div>
+            <div className="bg-gray-50 rounded-lg p-4">
+              <dt className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1">Metageneration</dt>
+              <dd className="text-sm text-gray-900 font-mono">{metadata.metageneration}</dd>
+            </div>
+          </dl>
+        </div>
+
         {/* Phase 4: Object ACL Management */}
-        <div>
-          <h2 className="text-xl font-semibold text-gray-800 mb-2">Access Control (Phase 4)</h2>
-          <div className="p-4 bg-white shadow rounded-lg">
-            <p className="text-sm text-gray-600 mb-3">
-              Control who can access this object. "private" requires authentication, "publicRead" allows anonymous access.
-            </p>
-            <div className="flex items-center space-x-4">
-              <div className="flex-1">
-                <label htmlFor="object-acl" className="block text-sm font-medium text-gray-700 mb-1">
-                  Current ACL
-                </label>
-                <select
-                  id="object-acl"
-                  value={objectACL}
+        <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
+          <h2 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
+            {objectACL === 'private' ? (
+              <Lock className="w-5 h-5 text-gray-600" />
+            ) : (
+              <Unlock className="w-5 h-5 text-orange-600" />
+            )}
+            Access Control
+          </h2>
+          <p className="text-sm text-gray-600 mb-4">
+            Control who can access this object. "private" requires authentication, "publicRead" allows anonymous access.
+          </p>
+          <div className="flex items-center gap-4">
+            <div className="flex-1">
+              <label htmlFor="object-acl" className="block text-sm font-medium text-gray-700 mb-2">
+                Current ACL
+              </label>
+              <select
+                id="object-acl"
+                value={objectACL}
                   onChange={(e) => handleUpdateACL(e.target.value as ACLValue)}
                   disabled={isLoadingACL || isUpdatingACL}
                   className="block w-full pl-3 pr-10 py-2 text-base border-gray-300 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm rounded-md disabled:bg-gray-100 disabled:cursor-not-allowed"
@@ -206,67 +225,67 @@ const ObjectDetailsPage = () => {
                   <option value="publicRead">Public Read (Anonymous access allowed)</option>
                 </select>
               </div>
-              <div className="flex items-center space-x-2">
-                {isLoadingACL || isUpdatingACL ? (
-                  <div className="animate-spin h-5 w-5 border-2 border-indigo-600 border-t-transparent rounded-full"></div>
-                ) : objectACL === 'private' ? (
-                  <Lock size={20} className="text-gray-600" />
-                ) : (
-                  <Unlock size={20} className="text-orange-600" />
-                )}
-                <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
-                  objectACL === 'private' ? 'bg-gray-100 text-gray-800' : 'bg-orange-100 text-orange-800'
-                }`}>
-                  {objectACL}
-                </span>
-              </div>
+            <div className="flex items-center space-x-2">
+              {isLoadingACL || isUpdatingACL ? (
+                <div className="animate-spin h-5 w-5 border-2 border-indigo-600 border-t-transparent rounded-full"></div>
+              ) : objectACL === 'private' ? (
+                <Lock size={20} className="text-gray-600" />
+              ) : (
+                <Unlock size={20} className="text-orange-600" />
+              )}
+              <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
+                objectACL === 'private' ? 'bg-gray-100 text-gray-800' : 'bg-orange-100 text-orange-800'
+              }`}>
+                {objectACL}
+              </span>
             </div>
           </div>
         </div>
 
         {/* Phase 3: Signed URL Section */}
-        <div>
-          <h2 className="text-xl font-semibold text-gray-800 mb-2">Signed URL (Phase 3)</h2>
-          <div className="p-4 bg-white shadow rounded-lg">
-            <p className="text-sm text-gray-600 mb-3">
-              Generate a temporary signed URL for secure download without authentication.
-            </p>
-            <button
-              onClick={handleGenerateSignedUrl}
-              disabled={isGeneratingUrl}
-              className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 disabled:bg-gray-400 disabled:cursor-not-allowed"
-            >
-              <LinkIcon size={16} className="mr-2" />
-              {isGeneratingUrl ? "Generating..." : "Generate Signed URL"}
-            </button>
-            
-            {signedUrl && (
-              <div className="mt-4 p-3 bg-gray-50 rounded border border-gray-200">
-                <div className="flex justify-between items-start">
-                  <div className="flex-1 mr-2">
-                    <p className="text-xs font-medium text-gray-700 mb-1">Signed URL (expires in 1 hour):</p>
-                    <p className="text-xs text-gray-600 font-mono break-all">{signedUrl}</p>
-                  </div>
-                  <button
-                    onClick={handleCopySignedUrl}
-                    className="flex-shrink-0 inline-flex items-center px-3 py-1 border border-gray-300 text-xs font-medium rounded text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
-                  >
-                    {copied ? (
-                      <>
-                        <Check size={14} className="mr-1 text-green-600" />
-                        Copied!
-                      </>
-                    ) : (
-                      <>
-                        <LinkIcon size={14} className="mr-1" />
-                        Copy
-                      </>
-                    )}
-                  </button>
+        <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
+          <h2 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
+            <LinkIcon className="w-5 h-5 text-gray-600" />
+            Signed URL
+          </h2>
+          <p className="text-sm text-gray-600 mb-4">
+            Generate a temporary signed URL for secure download without authentication.
+          </p>
+          <button
+            onClick={handleGenerateSignedUrl}
+            disabled={isGeneratingUrl}
+            className="inline-flex items-center gap-2 px-5 py-2.5 border border-transparent text-sm font-medium rounded-lg shadow-sm text-white bg-indigo-600 hover:bg-indigo-700 transition-colors disabled:bg-gray-400 disabled:cursor-not-allowed"
+          >
+            <LinkIcon size={18} />
+            {isGeneratingUrl ? "Generating..." : "Generate Signed URL"}
+          </button>
+          
+          {signedUrl && (
+            <div className="mt-4 p-4 bg-indigo-50 rounded-lg border-2 border-indigo-200">
+              <div className="flex justify-between items-start gap-3">
+                <div className="flex-1 min-w-0">
+                  <p className="text-xs font-semibold text-indigo-900 mb-2">Signed URL (expires in 1 hour):</p>
+                  <p className="text-xs text-indigo-700 font-mono break-all bg-white p-2 rounded border border-indigo-200">{signedUrl}</p>
                 </div>
+                <button
+                  onClick={handleCopySignedUrl}
+                  className="flex-shrink-0 inline-flex items-center gap-1.5 px-4 py-2 border border-indigo-300 text-xs font-medium rounded-lg text-indigo-700 bg-white hover:bg-indigo-50 transition-colors"
+                >
+                  {copied ? (
+                    <>
+                      <Check size={16} className="text-green-600" />
+                      Copied!
+                    </>
+                  ) : (
+                    <>
+                      <LinkIcon size={16} />
+                      Copy
+                    </>
+                  )}
+                </button>
               </div>
-            )}
-          </div>
+            </div>
+          )}
         </div>
 
         {/* Version History Section */}
@@ -312,7 +331,7 @@ const ObjectDetailsPage = () => {
   return (
     <div className="p-6">
       <button
-        onClick={() => navigate(`/buckets/${bucketName}`)}
+        onClick={() => navigate(`/services/storage/buckets/${bucketName}`)}
         className="inline-flex items-center mb-4 px-3 py-1 border border-transparent text-sm font-medium rounded-md text-gray-700 bg-gray-100 hover:bg-gray-200"
       >
         <ArrowLeft size={16} className="mr-2" />
