@@ -20,9 +20,14 @@ export interface GCSObject {
   name: string;
   bucket: string;
   generation: string;
+  metageneration?: string;
   size: number;
   updated: string;
   contentType: string;
+  md5Hash?: string;
+  crc32c?: string;
+  storageClass?: string;
+  acl?: ACLValue;
 }
 
 export interface ObjectVersion {
@@ -46,6 +51,17 @@ export interface ListObjectsResponse {
   prefixes?: string[];
 }
 
+export interface UploadResponse {
+  kind?: string;
+  name: string;
+  bucket: string;
+  generation?: string;
+  size?: number;
+  metageneration?: string;
+  sessionId?: string; // For resumable uploads
+  Location?: string; // For resumable uploads
+}
+
 export interface ApiError {
   message: string;
   code?: string;
@@ -58,10 +74,64 @@ export interface UploadProgress {
   percentage: number;
 }
 
-export interface UploadResponse {
+// Phase 4: ACL Types
+export type ACLValue = 'private' | 'publicRead';
+
+export interface ACLResponse {
+  kind: string;
+  bucket?: string;
+  object?: string;
+  acl: ACLValue;
+}
+
+// Phase 4: Object Event Types
+export interface ObjectEvent {
+  event_id: string;
+  bucket_name: string;
+  object_name: string;
+  event_type: 'OBJECT_FINALIZE' | 'OBJECT_DELETE' | 'OBJECT_METADATA_UPDATE';
+  generation: number;
+  timestamp: string;
+  delivered: boolean;
+  metadata_json?: string;
+}
+
+export interface ListEventsResponse {
+  kind: string;
+  items?: ObjectEvent[];
+}
+
+// Phase 4: Lifecycle Rule Types
+export interface LifecycleRule {
+  ruleId: string;
+  bucket: string;
+  action: 'Delete' | 'Archive';
+  ageDays: number;
+  createdAt: string;
+}
+
+export interface CreateLifecycleRuleRequest {
+  bucket: string;
+  action: 'Delete' | 'Archive';
+  ageDays: number;
+}
+
+export interface LifecycleRulesResponse {
+  kind: string;
+  items: LifecycleRule[];
+}
+
+// Phase 4: Object Metadata with Storage Class
+export interface ObjectMetadata {
   name: string;
   bucket: string;
-  size?: number;
-  generation?: string;
-  metageneration?: string;
+  generation: string;
+  metageneration: string;
+  size: number;
+  updated: string;
+  contentType: string;
+  md5Hash?: string;
+  crc32c?: string;
+  storageClass?: 'STANDARD' | 'ARCHIVE';
+  acl?: ACLValue;
 }

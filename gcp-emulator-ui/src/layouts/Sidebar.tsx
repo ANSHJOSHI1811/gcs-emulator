@@ -1,5 +1,5 @@
 import { Link, useLocation } from 'react-router-dom';
-import { Home, FolderOpen, Settings } from 'lucide-react';
+import { Home, FolderOpen, Activity, Settings } from 'lucide-react';
 
 const Sidebar = () => {
   const location = useLocation();
@@ -7,6 +7,7 @@ const Sidebar = () => {
   const navItems = [
     { path: '/', icon: Home, label: 'Dashboard' },
     { path: '/buckets', icon: FolderOpen, label: 'Buckets' },
+    { path: '/events', icon: Activity, label: 'Events' },
     { path: '/settings', icon: Settings, label: 'Settings' },
   ];
 

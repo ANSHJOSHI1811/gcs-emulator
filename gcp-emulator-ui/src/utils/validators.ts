@@ -15,9 +15,29 @@ export const isValidBucketName = (name: string): boolean => {
   return true;
 };
 
-// Object name validation
+// Object name validation with path traversal prevention
 export const isValidObjectName = (name: string): boolean => {
   if (!name || name.length === 0) return false;
   if (name.length > 1024) return false;
+  
+  // Prevent path traversal attempts
+  if (name.includes('..')) return false;
+  if (name.includes('\\')) return false;
+  if (name.startsWith('/')) return false;
+  
+  // Prevent Windows drive letters
+  if (name.length >= 2 && name[1] === ':') return false;
+  
   return true;
+};
+
+// Get detailed error message for object name validation
+export const getObjectNameError = (name: string): string | null => {
+  if (!name) return "Object name is required";
+  if (name.length > 1024) return "Object name must be less than 1024 characters";
+  if (name.includes('..')) return "Object name cannot contain '..' (path traversal)";
+  if (name.includes('\\')) return "Object name cannot contain backslashes";
+  if (name.startsWith('/')) return "Object name cannot start with '/'";
+  if (name.length >= 2 && name[1] === ':') return "Object name cannot contain drive letters";
+  return null;
 };

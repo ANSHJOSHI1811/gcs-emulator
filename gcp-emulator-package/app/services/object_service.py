@@ -158,6 +158,67 @@ class ObjectService:
         db.session.commit()
         return True
     
+    @staticmethod
+    def copy_object(
+        src_bucket_name: str,
+        src_object_name: str,
+        dst_bucket_name: str,
+        dst_object_name: str
+    ):
+        """
+        Copy an object from source to destination
+        
+        Args:
+            src_bucket_name: Source bucket name
+            src_object_name: Source object name
+            dst_bucket_name: Destination bucket name
+            dst_object_name: Destination object name
+            
+        Returns:
+            Created destination Object object
+            
+        Raises:
+            ValueError: If source doesn't exist or destination invalid
+        """
+        # Validate source exists
+        ObjectService._validate_object_identifiers(src_bucket_name, src_object_name)
+        ObjectService._validate_object_identifiers(dst_bucket_name, dst_object_name)
+        
+        # Get source object and bucket
+        src_bucket = ObjectService._find_bucket_or_raise(src_bucket_name)
+        src_obj = ObjectService._find_object_or_raise(
+            src_bucket.id, src_bucket_name, src_object_name
+        )
+        
+        # Get destination bucket
+        dst_bucket = ObjectService._find_bucket_or_raise(dst_bucket_name)
+        
+        # Read source file content
+        src_content = ObjectService._read_file_from_storage(src_obj.file_path)
+        
+        # Copy file to destination storage
+        dst_file_path = ObjectService._save_file_to_storage(dst_bucket.id, src_content)
+        
+        # Create new object record with copied metadata
+        dst_obj = Object(
+            id=f"{dst_bucket.id}/{dst_object_name}/{uuid.uuid4().hex[:8]}",
+            bucket_id=dst_bucket.id,
+            name=dst_object_name,
+            size=src_obj.size,
+            content_type=src_obj.content_type,
+            md5_hash=src_obj.md5_hash,
+            crc32c_hash=src_obj.crc32c_hash,
+            file_path=dst_file_path,
+            metageneration=1,  # New object starts at metageneration 1
+            storage_class=src_obj.storage_class,  # Preserve storage class
+            meta=src_obj.meta.copy() if src_obj.meta else {}  # Copy custom metadata
+        )
+        
+        db.session.add(dst_obj)
+        db.session.commit()
+        
+        return dst_obj
+    
     # ========== Private Helper Methods ==========
     
     @staticmethod
@@ -248,8 +309,18 @@ class ObjectService:
     @staticmethod
     def _save_file_to_storage(bucket_id: str, content: bytes) -> str:
         """Save file content to filesystem and return storage path"""
-        # Create bucket-specific storage directory
-        storage_directory = Path(ObjectService.STORAGE_PATH) / bucket_id
+        # Create bucket-specific storage directory with path traversal protection
+        storage_root = Path(ObjectService.STORAGE_PATH).resolve()
+        storage_directory = storage_root / bucket_id
+        
+        # Ensure resolved path is within storage root
+        try:
+            resolved_dir = storage_directory.resolve()
+            if not str(resolved_dir).startswith(str(storage_root)):
+                raise ValueError(f"Invalid bucket_id: path traversal detected")
+        except (ValueError, OSError) as e:
+            raise ValueError(f"Invalid bucket_id: {str(e)}")
+        
         storage_directory.mkdir(parents=True, exist_ok=True)
         
         # Generate unique file ID and save content

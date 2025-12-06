@@ -24,8 +24,7 @@ def calculate_crc32c(data: bytes) -> str:
     """
     Calculate CRC32C checksum of data and return as base64-encoded string
     
-    Note: This is a placeholder implementation using CRC32 instead of CRC32C.
-    For production, use google-crc32c library for proper CRC32C calculation.
+    Uses google-crc32c library for proper CRC32C calculation matching GCS.
     
     Args:
         data: Raw bytes to hash
@@ -33,10 +32,12 @@ def calculate_crc32c(data: bytes) -> str:
     Returns:
         Base64-encoded CRC32C checksum string
     """
-    import zlib
-    # Using standard CRC32 as placeholder
-    # Production should use: import google_crc32c; checksum = google_crc32c.value(data)
-    crc = zlib.crc32(data)
-    # Convert to 4-byte big-endian representation
-    crc_bytes = crc.to_bytes(4, byteorder='big')
-    return base64.b64encode(crc_bytes).decode('utf-8')
+    import google_crc32c
+    
+    # Calculate CRC32C checksum using Google's library
+    checksum = google_crc32c.Checksum()
+    checksum.update(data)
+    crc_value = checksum.digest()
+    
+    # Return base64-encoded result
+    return base64.b64encode(crc_value).decode('utf-8')

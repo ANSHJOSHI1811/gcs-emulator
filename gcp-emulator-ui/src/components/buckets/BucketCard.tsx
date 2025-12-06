@@ -9,6 +9,18 @@ interface BucketCardProps {
 }
 
 export default function BucketCard({ bucket, onDelete }: BucketCardProps) {
+  const handleDelete = () => {
+    const confirmed = window.confirm(
+      `Delete bucket "${bucket.name}"?\n\n` +
+      `⚠️ Warning: This will permanently delete the bucket and ALL objects inside it.\n\n` +
+      `Make sure all objects are deleted first, or the deletion will fail.`
+    );
+    
+    if (confirmed) {
+      onDelete();
+    }
+  };
+
   return (
     <div className="bg-white rounded-lg shadow-md hover:shadow-xl hover:border-blue-500 border-2 border-transparent transition-all duration-300 p-4 flex flex-col justify-between">
       <Link to={`/buckets/${bucket.name}`} className="flex-grow">
@@ -21,9 +33,9 @@ export default function BucketCard({ bucket, onDelete }: BucketCardProps) {
       </Link>
       <div className="mt-4 flex justify-end space-x-2">
         <button
-          onClick={onDelete}
+          onClick={handleDelete}
           className="p-2 text-gray-500 hover:text-red-600"
-          title="Delete Bucket"
+          title="Delete Bucket (must be empty)"
         >
           <Trash2 size={18} />
         </button>

@@ -10,6 +10,7 @@ from app.factory import db
 from app.models.object import Object, ObjectVersion
 from app.models.bucket import Bucket
 from app.utils.hashing import calculate_md5, calculate_crc32c
+from app.services.object_event_service import ObjectEventService, EventType
 
 
 class PreconditionFailedError(Exception):
@@ -146,6 +147,14 @@ class ObjectVersioningService:
         # Save version
         db.session.add(version)
         db.session.commit()
+        
+        # Phase 4: Log OBJECT_FINALIZE event
+        ObjectEventService.log_event(
+            bucket_name=bucket_name,
+            object_name=object_name,
+            event_type=EventType.OBJECT_FINALIZE,
+            generation=next_generation
+        )
         
         return obj
     
@@ -374,6 +383,16 @@ class ObjectVersioningService:
             version.updated_at = datetime.utcnow()
         
         db.session.commit()
+        
+        # Phase 4: Log OBJECT_METADATA_UPDATE event
+        ObjectEventService.log_event(
+            bucket_name=bucket_name,
+            object_name=object_name,
+            event_type=EventType.OBJECT_METADATA_UPDATE,
+            generation=obj.generation,
+            metadata=metadata
+        )
+        
         return obj
     
     # ========== Private Helper Methods ==========
@@ -437,9 +456,25 @@ class ObjectVersioningService:
         
         Returns:
             File path string
+            
+        Raises:
+            ValueError: If object_name contains path traversal attempts
         """
+        # Validate object name to prevent path traversal
+        ObjectVersioningService._validate_object_name_for_path_traversal(object_name)
+        
         # Create directory structure: storage/bucket/object/
-        object_dir = Path(ObjectVersioningService.STORAGE_PATH) / bucket_id / object_name
+        storage_root = Path(ObjectVersioningService.STORAGE_PATH).resolve()
+        object_dir = storage_root / bucket_id / object_name
+        
+        # Ensure the resolved path is still within storage root
+        try:
+            resolved_object_dir = object_dir.resolve()
+            if not str(resolved_object_dir).startswith(str(storage_root)):
+                raise ValueError(f"Invalid object name: path traversal detected")
+        except (ValueError, OSError) as e:
+            raise ValueError(f"Invalid object name: {str(e)}")
+        
         object_dir.mkdir(parents=True, exist_ok=True)
         
         # Save with generation in filename
@@ -447,6 +482,33 @@ class ObjectVersioningService:
         file_path.write_bytes(content)
         
         return str(file_path)
+    
+    @staticmethod
+    def _validate_object_name_for_path_traversal(object_name: str) -> None:
+        """
+        Validate object name to prevent path traversal attacks
+        
+        Raises:
+            ValueError: If object name contains dangerous patterns
+        """
+        if not object_name:
+            raise ValueError("Object name cannot be empty")
+        
+        # Reject if contains ".." anywhere
+        if ".." in object_name:
+            raise ValueError("Invalid object name: '..' not allowed")
+        
+        # Reject backslashes (Windows path separator)
+        if "\\" in object_name:
+            raise ValueError("Invalid object name: backslashes not allowed")
+        
+        # Reject absolute paths (Unix-style)
+        if object_name.startswith("/"):
+            raise ValueError("Invalid object name: absolute paths not allowed")
+        
+        # Reject Windows drive letters (C:, D:, etc.)
+        if len(object_name) >= 2 and object_name[1] == ":":
+            raise ValueError("Invalid object name: drive letters not allowed")
     
     @staticmethod
     def _delete_specific_version(bucket_id: str, object_name: str, generation: int, obj: Object) -> bool:
@@ -495,6 +557,15 @@ class ObjectVersioningService:
                 obj.is_latest = False
         
         db.session.commit()
+        
+        # Phase 4: Log OBJECT_DELETE event
+        ObjectEventService.log_event(
+            bucket_name=bucket.name,
+            object_name=object_name,
+            event_type=EventType.OBJECT_DELETE,
+            generation=generation
+        )
+        
         return True
     
     @staticmethod

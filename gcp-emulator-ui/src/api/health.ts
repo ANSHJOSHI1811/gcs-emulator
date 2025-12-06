@@ -26,8 +26,6 @@ export const getApiHealth = async (): Promise<HealthStatus> => {
       await api.get('/');
       return { status: 'healthy', message: 'API is responsive.' };
     } catch (rootError: any) {
-      // TODO: The backend does not have a health endpoint.
-      // This is a mock response as per requirements.
       if (error.response?.status === 404) {
         return { status: 'unknown', message: 'Health endpoint not implemented' };
       }

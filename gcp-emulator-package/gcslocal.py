@@ -39,6 +39,11 @@ def parse_gs_url(url: str) -> tuple:
         raise ValueError(f"Invalid GCS URL: {url} (must start with gs://)")
     
     path = url[5:]  # Remove 'gs://'
+    # Handle empty path (gs:// without bucket name)
+    if not path or path == '/':
+        return None, None
+    # Remove trailing slashes for consistent parsing
+    path = path.rstrip('/')
     if '/' in path:
         bucket, obj = path.split('/', 1)
         return bucket, obj
@@ -116,7 +121,7 @@ def list_buckets(project: str = None):
                 print_info("No buckets found")
                 return True
             
-            print(f"{Colors.BOLD}Buckets in project '{project}':{Colors.RESET}")
+            print(f"{Colors.BOLD}{len(buckets)} buckets in project '{project}':{Colors.RESET}")
             for bucket in buckets:
                 name = bucket.get('name')
                 location = bucket.get('location', 'N/A')
@@ -386,8 +391,14 @@ Environment Variables:
                 success = list_buckets(project)
             else:
                 # List objects in bucket
-                bucket_name, _ = parse_gs_url(args.args[0])
-                success = list_objects(bucket_name)
+                url = args.args[0]
+                bucket_name, _ = parse_gs_url(url)
+                if bucket_name is None:
+                    # User typed gs:// without bucket name - list buckets
+                    success = list_buckets(project)
+                else:
+                    # List objects in specific bucket
+                    success = list_objects(bucket_name)
             return 0 if success else 1
         
         elif command == 'rb':  # Remove bucket

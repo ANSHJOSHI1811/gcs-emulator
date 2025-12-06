@@ -1,5 +1,5 @@
 import { apiClient, PROJECT_ID } from './client';
-import { Bucket } from '@/types';
+import { Bucket, ACLResponse, ACLValue } from '@/types';
 
 interface BackendBucket {
   name: string;
@@ -48,4 +48,20 @@ export async function createBucket(
 
 export async function deleteBucket(name: string): Promise<void> {
   await apiClient.delete(`/storage/v1/b/${name}?project=${PROJECT_ID}`);
+}
+
+// Phase 4: Bucket ACL Management
+export async function getBucketACL(bucketName: string): Promise<ACLValue> {
+  const response = await apiClient.get<ACLResponse>(
+    `/storage/v1/b/${bucketName}/acl`
+  );
+  return response.data.acl;
+}
+
+export async function updateBucketACL(bucketName: string, acl: ACLValue): Promise<ACLValue> {
+  const response = await apiClient.patch<ACLResponse>(
+    `/storage/v1/b/${bucketName}/acl`,
+    { acl }
+  );
+  return response.data.acl;
 }

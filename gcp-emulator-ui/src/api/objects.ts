@@ -1,5 +1,5 @@
 import { apiClient, PROJECT_ID } from './client';
-import { GCSObject } from '../types';
+import { GCSObject, ACLResponse, ACLValue } from '../types';
 
 interface BackendObject {
   name: string;
@@ -44,4 +44,22 @@ export async function deleteObject(bucketName: string, objectName: string, gener
     url += `&generation=${generation}`;
   }
   await apiClient.delete(url);
+}
+
+// Phase 4: Object ACL Management
+export async function getObjectACL(bucketName: string, objectName: string): Promise<ACLValue> {
+  const encodedObjectName = encodeURIComponent(objectName);
+  const response = await apiClient.get<ACLResponse>(
+    `/storage/v1/b/${bucketName}/o/${encodedObjectName}/acl`
+  );
+  return response.data.acl;
+}
+
+export async function updateObjectACL(bucketName: string, objectName: string, acl: ACLValue): Promise<ACLValue> {
+  const encodedObjectName = encodeURIComponent(objectName);
+  const response = await apiClient.patch<ACLResponse>(
+    `/storage/v1/b/${bucketName}/o/${encodedObjectName}/acl`,
+    { acl }
+  );
+  return response.data.acl;
 }

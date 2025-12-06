@@ -60,3 +60,56 @@ def sdk_client(app, client):
         )
         
         yield gcs_client
+
+
+@pytest.fixture
+def setup_project(client):
+    """Ensures test project exists"""
+    # The project is automatically created by the factory
+    return "test-project"
+
+
+@pytest.fixture
+def setup_bucket(client, setup_project):
+    """Create a test bucket and return its name"""
+    import uuid
+    project_id = setup_project
+    bucket_name = f"test-bucket-{uuid.uuid4().hex[:8]}"
+    
+    response = client.post(
+        f"/storage/v1/b?project={project_id}",
+        json={"name": bucket_name},
+        headers={"Content-Type": "application/json"}
+    )
+    assert response.status_code == 201
+    
+    return bucket_name
+
+
+@pytest.fixture
+def setup_bucket_with_versioning(client, setup_project):
+    """Create a test bucket with versioning enabled"""
+    import uuid
+    project_id = setup_project
+    bucket_name = f"versioned-bucket-{uuid.uuid4().hex[:8]}"
+    
+    # Create bucket
+    response = client.post(
+        f"/storage/v1/b?project={project_id}",
+        json={
+            "name": bucket_name,
+            "versioning": {"enabled": False}
+        },
+        headers={"Content-Type": "application/json"}
+    )
+    assert response.status_code == 201
+    
+    # Enable versioning
+    patch_response = client.patch(
+        f"/storage/v1/b/{bucket_name}",
+        json={"versioning": {"enabled": True}},
+        headers={"Content-Type": "application/json"}
+    )
+    assert patch_response.status_code == 200
+    
+    return bucket_name

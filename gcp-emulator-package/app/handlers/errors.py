@@ -2,18 +2,19 @@
 Error handlers - Global error handling
 """
 from flask import jsonify
+from app.utils.gcs_errors import not_found_error, invalid_argument_error, internal_error
 
 
 def handle_not_found(error):
     """Handle 404 Not Found errors"""
-    return jsonify({"error": {"message": "Resource not found"}}), 404
+    return not_found_error("resource", "resource")
 
 
 def handle_bad_request(error):
     """Handle 400 Bad Request errors"""
-    return jsonify({"error": {"message": "Bad request"}}), 400
+    return invalid_argument_error("Bad request")
 
 
 def handle_internal_error(error):
     """Handle 500 Internal Server Error"""
-    return jsonify({"error": {"message": "Internal server error"}}), 500
+    return internal_error("Internal server error")

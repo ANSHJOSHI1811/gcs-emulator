@@ -20,6 +20,8 @@ class Object(db.Model):
     crc32c_hash = db.Column(db.String(44))
     file_path = db.Column(db.String(1024))
     metageneration = db.Column(db.BigInteger, default=1)
+    storage_class = db.Column(db.String(50), default="STANDARD")  # Phase 4: For lifecycle Archive
+    acl = db.Column(db.String(20), default="private")  # Phase 4: Minimal ACL
     is_latest = db.Column(db.Boolean, default=True, nullable=False)
     deleted = db.Column(db.Boolean, default=False, nullable=False)
     time_created = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
@@ -42,17 +44,26 @@ class Object(db.Model):
     
     def to_dict(self) -> dict:
         """Convert to dictionary - GCS JSON API v1 format"""
+        # Get the actual bucket name from the relationship
+        from app.models.bucket import Bucket
+        bucket = Bucket.query.filter_by(id=self.bucket_id).first()
+        bucket_name = bucket.name if bucket else self.bucket_id
+        
+        # RFC 3339 timestamp formatting: YYYY-MM-DDTHH:MM:SS.sssZ
+        time_created_rfc3339 = self.time_created.strftime('%Y-%m-%dT%H:%M:%S.%f')[:-3] + 'Z'
+        updated_rfc3339 = self.updated_at.strftime('%Y-%m-%dT%H:%M:%S.%f')[:-3] + 'Z'
+        
         return {
             "kind": "storage#object",
-            "id": f"{self.bucket_id}/{self.name}/{self.generation}",
-            "selfLink": f"/storage/v1/b/{self.bucket_id}/o/{self.name}",
+            "id": f"{bucket_name}/{self.name}/{self.generation}",
+            "selfLink": f"/storage/v1/b/{bucket_name}/o/{self.name}",
             "name": self.name,
-            "bucket": self.bucket_id,
+            "bucket": bucket_name,
             "generation": str(self.generation),
             "metageneration": str(self.metageneration),
             "contentType": self.content_type,
-            "timeCreated": self.time_created.isoformat() + "Z",
-            "updated": self.updated_at.isoformat() + "Z",
+            "timeCreated": time_created_rfc3339,
+            "updated": updated_rfc3339,
             "size": str(self.size),
             "md5Hash": self.md5_hash,
             "crc32c": self.crc32c_hash,
@@ -93,17 +104,26 @@ class ObjectVersion(db.Model):
     
     def to_dict(self) -> dict:
         """Convert to dictionary - GCS JSON API v1 format"""
+        # Get the actual bucket name from the relationship
+        from app.models.bucket import Bucket
+        bucket = Bucket.query.filter_by(id=self.bucket_id).first()
+        bucket_name = bucket.name if bucket else self.bucket_id
+        
+        # RFC 3339 timestamp formatting: YYYY-MM-DDTHH:MM:SS.sssZ
+        time_created_rfc3339 = self.created_at.strftime('%Y-%m-%dT%H:%M:%S.%f')[:-3] + 'Z'
+        updated_rfc3339 = self.updated_at.strftime('%Y-%m-%dT%H:%M:%S.%f')[:-3] + 'Z'
+        
         return {
             "kind": "storage#object",
-            "id": f"{self.bucket_id}/{self.name}/{self.generation}",
-            "selfLink": f"/storage/v1/b/{self.bucket_id}/o/{self.name}",
+            "id": f"{bucket_name}/{self.name}/{self.generation}",
+            "selfLink": f"/storage/v1/b/{bucket_name}/o/{self.name}",
             "name": self.name,
-            "bucket": self.bucket_id,
+            "bucket": bucket_name,
             "generation": str(self.generation),
             "metageneration": str(self.metageneration),
             "contentType": self.content_type,
-            "timeCreated": self.created_at.isoformat() + "Z",
-            "updated": self.updated_at.isoformat() + "Z",
+            "timeCreated": time_created_rfc3339,
+            "updated": updated_rfc3339,
             "size": str(self.size),
             "md5Hash": self.md5_hash,
             "crc32c": self.crc32c_hash,

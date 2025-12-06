@@ -130,8 +130,8 @@ class BucketService:
         BucketService._ensure_project_exists(project_id)
         BucketService._validate_bucket_name(name)
         
-        # Ensure bucket name is unique across all projects
-        BucketService._check_bucket_uniqueness(name)
+        # Ensure bucket name is unique within the project
+        BucketService._check_bucket_uniqueness(project_id, name)
         
         log_service_stage(
             message="Business validations passed - creating bucket",
@@ -162,12 +162,13 @@ class BucketService:
         return bucket
     
     @staticmethod
-    def get_bucket(bucket_name: str):
+    def get_bucket(bucket_name: str, project_id: str = None):
         """
         Get bucket details by name
         
         Args:
             bucket_name: The bucket name
+            project_id: Optional project ID for scoped lookup
             
         Returns:
             Bucket object or None if not found
@@ -182,11 +183,15 @@ class BucketService:
             details={
                 "operation": "SELECT",
                 "table": "buckets",
-                "filter": f"name={bucket_name}"
+                "filter": f"name={bucket_name}, project_id={project_id}" if project_id else f"name={bucket_name}"
             }
         )
         
-        bucket = Bucket.query.filter_by(name=bucket_name).first()
+        if project_id:
+            bucket = Bucket.query.filter_by(project_id=project_id, name=bucket_name).first()
+        else:
+            # Backwards compatibility: find any bucket with this name
+            bucket = Bucket.query.filter_by(name=bucket_name).first()
         
         log_repository_stage(
             message="Database query completed",
@@ -203,7 +208,7 @@ class BucketService:
     @staticmethod
     def delete_bucket(bucket_name: str):
         """
-        Delete a bucket
+        Delete a bucket (hard delete - removes all objects and versions)
         
         Args:
             bucket_name: The bucket name
@@ -214,6 +219,11 @@ class BucketService:
         Raises:
             ValueError: If bucket doesn't exist or not empty
         """
+        import os
+        import shutil
+        from pathlib import Path
+        from app.models.object import ObjectVersion
+        
         BucketService._validate_bucket_name(bucket_name)
         
         bucket = BucketService._find_bucket_or_raise(bucket_name)
@@ -232,8 +242,22 @@ class BucketService:
         )
         
         try:
+            # Hard delete: Remove all object versions first
+            ObjectVersion.query.filter_by(bucket_id=bucket.id).delete()
+            
+            # Remove all objects (cascade should handle this, but explicit is safe)
+            from app.models.object import Object
+            Object.query.filter_by(bucket_id=bucket.id).delete()
+            
+            # Delete the bucket row
             db.session.delete(bucket)
             db.session.commit()
+            
+            # Delete physical storage directory
+            storage_path = os.getenv("STORAGE_PATH", "./storage")
+            bucket_dir = Path(storage_path) / bucket.id
+            if bucket_dir.exists():
+                shutil.rmtree(bucket_dir)
             
             log_repository_stage(
                 message="Database delete operation completed",
@@ -276,11 +300,14 @@ class BucketService:
             raise ValueError("Bucket name is required")
     
     @staticmethod
-    def _check_bucket_uniqueness(bucket_name: str) -> None:
-        """Ensure bucket name doesn't already exist in database"""
-        existing_bucket = Bucket.query.filter_by(name=bucket_name).first()
+    def _check_bucket_uniqueness(project_id: str, bucket_name: str) -> None:
+        """Ensure bucket name doesn't already exist within the same project"""
+        existing_bucket = Bucket.query.filter_by(
+            project_id=project_id,
+            name=bucket_name
+        ).first()
         if existing_bucket:
-            raise ValueError(f"Bucket name '{bucket_name}' already exists")
+            raise ValueError(f"Bucket name '{bucket_name}' already exists in project '{project_id}'")
 
     @staticmethod
     def _ensure_project_exists(project_id: str) -> None:
@@ -377,6 +404,13 @@ class BucketService:
     
     @staticmethod
     def _ensure_bucket_is_empty(bucket: Bucket) -> None:
-        """Verify bucket has no objects before allowing deletion"""
-        if bucket.objects:
+        """Verify bucket has no non-deleted objects before allowing deletion"""
+        from app.models.object import Object
+        # Only check for non-deleted objects
+        active_objects = Object.query.filter_by(
+            bucket_id=bucket.id,
+            deleted=False
+        ).first()
+        
+        if active_objects:
             raise ValueError(f"Bucket '{bucket.name}' is not empty")

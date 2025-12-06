@@ -54,9 +54,9 @@ def extract_boundary(content_type: str) -> str:
     if not content_type:
         raise MultipartParseError("Content-Type header is required")
     
-    # Check if it's multipart/related
-    if "multipart/related" not in content_type.lower():
-        raise MultipartParseError(f"Expected multipart/related, got: {content_type}")
+    # Check if it's multipart/related or multipart/form-data
+    if "multipart/" not in content_type.lower():
+        raise MultipartParseError(f"Expected multipart content type, got: {content_type}")
     
     # Extract boundary parameter
     # Format: boundary="value" or boundary=value

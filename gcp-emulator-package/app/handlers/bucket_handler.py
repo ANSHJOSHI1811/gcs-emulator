@@ -7,6 +7,12 @@ from flask import jsonify
 from app.services.bucket_service import BucketService
 from app.validators.bucket_validators import is_valid_bucket_name
 from app.logging import log_handler_stage
+from app.utils.gcs_errors import (
+    not_found_error,
+    invalid_argument_error,
+    conflict_error,
+    internal_error
+)
 
 
 def handle_list_buckets(request):
@@ -47,9 +53,9 @@ def handle_list_buckets(request):
             "items": items
         }), 200
     except ValueError as e:
-        return jsonify({"error": str(e)}), 400
+        return invalid_argument_error(str(e))
     except Exception as e:
-        return jsonify({"error": f"Internal server error: {str(e)}"}), 500
+        return internal_error(f"Internal server error: {str(e)}")
 
 
 def handle_create_bucket(request):
@@ -92,9 +98,9 @@ def handle_create_bucket(request):
         
         # Validate bucket name
         if not is_valid_bucket_name(name):
-            return jsonify({
-                "error": {"message": f"Invalid bucket name '{name}'. Must be 3-63 characters, lowercase, alphanumeric with hyphens/dots/underscores"}
-            }), 400
+            return invalid_argument_error(
+                f"Invalid bucket name '{name}'. Must be 3-63 characters, lowercase, alphanumeric with hyphens/dots/underscores"
+            )
         
         log_handler_stage(
             message="Delegating to BucketService.create_bucket",
@@ -126,10 +132,10 @@ def handle_create_bucket(request):
     except ValueError as e:
         error_msg = str(e)
         if "already exists" in error_msg:
-            return jsonify({"error": {"message": error_msg}}), 409
-        return jsonify({"error": {"message": error_msg}}), 400
+            return conflict_error(error_msg)
+        return invalid_argument_error(error_msg)
     except Exception as e:
-        return jsonify({"error": {"message": f"Internal server error: {str(e)}"}}), 500
+        return internal_error(f"Internal server error: {str(e)}")
 
 
 def handle_get_bucket(request, bucket_name):
@@ -160,7 +166,7 @@ def handle_get_bucket(request, bucket_name):
                     "http_status": 404
                 }
             )
-            return jsonify({"error": {"message": f"Bucket '{bucket_name}' not found"}}), 404
+            return not_found_error(bucket_name, "bucket")
         
         duration_ms = (time.time() - start_time) * 1000
         log_handler_stage(
@@ -175,9 +181,9 @@ def handle_get_bucket(request, bucket_name):
         
         return jsonify(bucket_obj.to_dict()), 200
     except ValueError as e:
-        return jsonify({"error": {"message": str(e)}}), 400
+        return invalid_argument_error(str(e))
     except Exception as e:
-        return jsonify({"error": {"message": f"Internal server error: {str(e)}"}}), 500
+        return internal_error(f"Internal server error: {str(e)}")
 
 
 def handle_delete_bucket(request, bucket_name):
@@ -191,10 +197,12 @@ def handle_delete_bucket(request, bucket_name):
     except ValueError as e:
         error_msg = str(e)
         if "already exists" in error_msg:
-            return jsonify({"error": {"message": error_msg}}), 409
-        return jsonify({"error": {"message": error_msg}}), 400
+            return conflict_error(error_msg)
+        if "not found" in error_msg.lower():
+            return not_found_error(bucket_name, "bucket")
+        return invalid_argument_error(error_msg)
     except Exception as e:
-        return jsonify({"error": {"message": f"Internal server error: {str(e)}"}}), 500
+        return internal_error(f"Internal server error: {str(e)}")
 
 
 def handle_update_bucket(request, bucket_name):
@@ -240,8 +248,8 @@ def handle_update_bucket(request, bucket_name):
         return jsonify(bucket_obj.to_dict()), 200
     except ValueError as e:
         error_msg = str(e)
-        if "not found" in error_msg:
-            return jsonify({"error": {"message": error_msg}}), 404
-        return jsonify({"error": {"message": error_msg}}), 400
+        if "not found" in error_msg.lower():
+            return not_found_error(bucket_name, "bucket")
+        return invalid_argument_error(error_msg)
     except Exception as e:
-        return jsonify({"error": {"message": f"Internal server error: {str(e)}"}}), 500
+        return internal_error(f"Internal server error: {str(e)}")

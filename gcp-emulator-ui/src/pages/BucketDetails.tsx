@@ -3,13 +3,18 @@ import { useParams, Link } from 'react-router-dom';
 import { useObjects } from '../hooks/useObjects';
 import { downloadObject } from '../api/objects';
 import { format } from 'date-fns';
-import { Download, Trash2, Upload } from 'lucide-react';
+import { Download, Trash2, Upload, Settings, Lock, Unlock } from 'lucide-react';
 import UploadObjectModal from '../components/UploadObjectModal';
 import Spinner from '../components/common/Spinner';
 import EmptyState from '../components/common/EmptyState';
 import SearchInput from '../components/common/SearchInput';
 import DropdownFilter from '../components/common/DropdownFilter';
 import Pagination from '../components/common/Pagination';
+import SecurityBanner from '../components/common/SecurityBanner';
+import BucketSettingsModal from '../components/BucketSettingsModal';
+import { ACLValue } from '../types';
+import { getBucketACL } from '../api/buckets';
+import toast from 'react-hot-toast';
 
 const PAGE_SIZE = 20;
 
@@ -24,11 +29,33 @@ const BucketDetails = () => {
   const { bucketName } = useParams<{ bucketName: string }>();
   const { objects, isLoading, error, refresh, handleDelete } = useObjects(bucketName!);
   const [isUploadModalOpen, setUploadModalOpen] = useState(false);
+  const [isSettingsModalOpen, setSettingsModalOpen] = useState(false);
 
   const [searchTerm, setSearchTerm] = useState("");
   const [contentTypeFilter, setContentTypeFilter] = useState("");
   const [sizeRangeFilter, setSizeRangeFilter] = useState("");
   const [currentPage, setCurrentPage] = useState(1);
+  
+  // Phase 4: Bucket ACL state
+  const [bucketACL, setBucketACL] = useState<ACLValue>('private');
+  const [isLoadingACL, setIsLoadingACL] = useState(false);
+
+  // Phase 4: Load bucket ACL
+  useEffect(() => {
+    const loadBucketACL = async () => {
+      if (!bucketName) return;
+      setIsLoadingACL(true);
+      try {
+        const acl = await getBucketACL(bucketName);
+        setBucketACL(acl);
+      } catch (err) {
+        console.error('Failed to load bucket ACL:', err);
+      } finally {
+        setIsLoadingACL(false);
+      }
+    };
+    loadBucketACL();
+  }, [bucketName]);
 
   useEffect(() => {
     if (bucketName) {
@@ -130,17 +157,49 @@ const BucketDetails = () => {
 
   return (
     <div className="p-6">
-      <div className="flex justify-between items-center mb-4">
-        <h1 className="text-2xl font-bold text-gray-900">
-          Bucket: <span className="font-mono">{bucketName}</span>
-        </h1>
-        <button
-          onClick={() => setUploadModalOpen(true)}
-          className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
-        >
-          <Upload size={16} className="mr-2" />
-          Upload
-        </button>
+      <SecurityBanner />
+      
+      <div className="flex justify-between items-center mb-6">
+        <div>
+          <h1 className="text-2xl font-bold text-gray-900">
+            Bucket: <span className="font-mono">{bucketName}</span>
+          </h1>
+          {/* Phase 4: Bucket ACL Badge */}
+          <div className="mt-2 flex items-center space-x-2">
+            {isLoadingACL ? (
+              <div className="animate-spin h-4 w-4 border-2 border-indigo-600 border-t-transparent rounded-full"></div>
+            ) : (
+              <>
+                {bucketACL === 'private' ? (
+                  <Lock size={16} className="text-gray-600" />
+                ) : (
+                  <Unlock size={16} className="text-orange-600" />
+                )}
+                <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
+                  bucketACL === 'private' ? 'bg-gray-100 text-gray-800' : 'bg-orange-100 text-orange-800'
+                }`}>
+                  ACL: {bucketACL}
+                </span>
+              </>
+            )}
+          </div>
+        </div>
+        <div className="flex space-x-2">
+          <button
+            onClick={() => setSettingsModalOpen(true)}
+            className="inline-flex items-center px-4 py-2 border border-gray-300 text-sm font-medium rounded-md shadow-sm text-gray-700 bg-white hover:bg-gray-50"
+          >
+            <Settings size={16} className="mr-2" />
+            Settings
+          </button>
+          <button
+            onClick={() => setUploadModalOpen(true)}
+            className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-blue-600 hover:bg-blue-700"
+          >
+            <Upload size={16} className="mr-2" />
+            Upload
+          </button>
+        </div>
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
@@ -172,12 +231,24 @@ const BucketDetails = () => {
       {renderContent()}
 
       {bucketName && (
-        <UploadObjectModal
-          isOpen={isUploadModalOpen}
-          onClose={() => setUploadModalOpen(false)}
-          bucketName={bucketName}
-          onUploaded={handleUploadSuccess}
-        />
+        <>
+          <UploadObjectModal
+            isOpen={isUploadModalOpen}
+            onClose={() => setUploadModalOpen(false)}
+            bucketName={bucketName}
+            onUploaded={handleUploadSuccess}
+          />
+          <BucketSettingsModal
+            isOpen={isSettingsModalOpen}
+            onClose={() => setSettingsModalOpen(false)}
+            bucketName={bucketName}
+            currentACL={bucketACL}
+            onACLUpdate={(newACL) => {
+              setBucketACL(newACL);
+              toast.success(`✅ Bucket ACL updated to ${newACL}`);
+            }}
+          />
+        </>
       )}
     </div>
   );

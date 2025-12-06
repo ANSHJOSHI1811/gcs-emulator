@@ -6,6 +6,7 @@ import Dashboard from './pages/Dashboard';
 import BucketListPage from './pages/BucketListPage';
 import BucketDetails from './pages/BucketDetails';
 import ObjectDetailsPage from './pages/ObjectDetailsPage';
+import EventsPage from './pages/EventsPage';
 import SettingsPage from './pages/SettingsPage';
 
 function App() {
@@ -18,6 +19,7 @@ function App() {
             <Route path="/buckets" element={<BucketListPage />} />
             <Route path="/buckets/:bucketName" element={<BucketDetails />} />
             <Route path="/buckets/:bucketName/objects/:objectName" element={<ObjectDetailsPage />} />
+            <Route path="/events" element={<EventsPage />} />
             <Route path="/settings" element={<SettingsPage />} />
           </Route>
         </Routes>

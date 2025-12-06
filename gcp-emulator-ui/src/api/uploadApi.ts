@@ -58,3 +58,44 @@ export const uploadMultipart = async (
 
   return response.data;
 };
+
+// Phase 3: Resumable Upload Support
+export const initiateResumableUpload = async (
+  bucketName: string,
+  objectName: string,
+  contentType: string
+): Promise<{ sessionId: string; Location: string }> => {
+  const response = await apiClient.post(
+    `/upload/storage/v1/b/${bucketName}/o?uploadType=resumable&project=${PROJECT_ID}`,
+    {
+      name: objectName,
+      contentType: contentType,
+    },
+    {
+      headers: {
+        "Content-Type": "application/json",
+      },
+    }
+  );
+  return response.data;
+};
+
+export const uploadChunk = async (
+  sessionId: string,
+  chunk: Blob,
+  offset: number,
+  totalSize: number
+): Promise<UploadResponse> => {
+  const chunkSize = chunk.size;
+  const response = await apiClient.put(
+    `/upload/resumable/${sessionId}`,
+    chunk,
+    {
+      headers: {
+        "Content-Range": `bytes ${offset}-${offset + chunkSize - 1}/${totalSize}`,
+        "Content-Length": chunkSize.toString(),
+      },
+    }
+  );
+  return response.data;
+};

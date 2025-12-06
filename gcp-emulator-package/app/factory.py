@@ -60,6 +60,11 @@ def create_app(config_name: str = None) -> Flask:
     with app.app_context():
         db.create_all()
     
+    # Start lifecycle executor background service
+    lifecycle_interval = int(os.getenv("LIFECYCLE_INTERVAL_MINUTES", "5"))
+    from app.services.lifecycle_executor import start_lifecycle_executor
+    start_lifecycle_executor(app, interval_minutes=lifecycle_interval)
+    
     return app
 
 
@@ -78,14 +83,31 @@ def register_blueprints(app: Flask) -> None:
     from app.routes.bucket_routes import buckets_bp
     from app.handlers.objects import objects_bp
     from app.handlers.health import health_bp
-    from app.handlers.upload import upload_bp
+    from app.handlers.upload import upload_bp, resumable_bp
     from app.handlers.download import download_bp
+    from app.handlers.signed_url_handler import signed_bp
+    from app.handlers.acl_handler import acl_bp
+    from app.handlers.lifecycle_handler import lifecycle_bp
+    from app.handlers.events_handler import events_bp
+    from app.handlers.dashboard_handler import dashboard_bp
+    from app.handlers.cors_handler import cors_bp
+    from app.handlers.notification_handler import notifications_bp
+    from app.handlers.lifecycle_config_handler import lifecycle_config_bp
     
     app.register_blueprint(health_bp)
     app.register_blueprint(buckets_bp, url_prefix="/storage/v1/b")
     app.register_blueprint(objects_bp, url_prefix="/storage/v1/b")
     app.register_blueprint(upload_bp, url_prefix="/upload")
+    app.register_blueprint(resumable_bp)  # Has its own URL prefix
     app.register_blueprint(download_bp, url_prefix="/download")
+    app.register_blueprint(signed_bp)  # Signed URL handler
+    app.register_blueprint(acl_bp)  # Phase 4: ACL endpoints
+    app.register_blueprint(lifecycle_bp)  # Phase 4: Lifecycle rules (legacy)
+    app.register_blueprint(events_bp)  # Phase 4: Object events
+    app.register_blueprint(dashboard_bp)  # Dashboard stats aggregation
+    app.register_blueprint(cors_bp, url_prefix="/storage/v1")  # CORS configuration
+    app.register_blueprint(notifications_bp, url_prefix="/storage/v1")  # Notification webhooks
+    app.register_blueprint(lifecycle_config_bp, url_prefix="/storage/v1")  # Lifecycle configuration
     
     # Register SDK compatibility middleware
     register_sdk_middleware(app)

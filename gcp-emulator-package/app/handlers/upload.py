@@ -1,16 +1,24 @@
 """
-Upload handler - Media and Multipart upload endpoints for object uploads with versioning
+Upload handler - Media, Multipart, and Resumable upload endpoints
 
 Supports:
     - Media upload: /upload/storage/v1/b/{bucket}/o?uploadType=media&name={object}
     - Multipart upload: /upload/storage/v1/b/{bucket}/o?uploadType=multipart
+    - Resumable upload: /upload/storage/v1/b/{bucket}/o?uploadType=resumable (Phase 3)
 
 Reference: https://cloud.google.com/storage/docs/uploading-objects
 """
-from flask import Blueprint, request, jsonify
+from flask import Blueprint, request, jsonify, url_for
 from app.services.object_versioning_service import ObjectVersioningService, PreconditionFailedError
+from app.services.resumable_upload_service import ResumableUploadService
 from app.validators.object_validators import is_valid_object_name
 from app.utils.multipart import extract_boundary, parse_multipart_body, MultipartParseError
+from app.utils.gcs_errors import (
+    not_found_error,
+    invalid_argument_error,
+    precondition_failed_error,
+    internal_error
+)
 
 upload_bp = Blueprint("upload", __name__)
 
@@ -18,7 +26,7 @@ upload_bp = Blueprint("upload", __name__)
 @upload_bp.route("/storage/v1/b/<bucket>/o", methods=["POST"])
 def upload_object(bucket):
     """
-    Upload an object via media or multipart upload with versioning support.
+    Upload an object via media, multipart, or resumable upload with versioning support.
     
     Media Upload:
         POST /upload/storage/v1/b/{bucket}/o?uploadType=media&name=object-name
@@ -31,8 +39,13 @@ def upload_object(bucket):
         - Part 1: JSON metadata with object name
         - Part 2: Binary file content
     
+    Resumable Upload (Phase 3):
+        POST /upload/storage/v1/b/{bucket}/o?uploadType=resumable
+        - Initiates a resumable upload session
+        - Returns Location header with session URL
+    
     Query Parameters:
-        uploadType: 'media' or 'multipart'
+        uploadType: 'media', 'multipart', or 'resumable'
         name: Object name (required for media upload, in metadata for multipart)
         ifGenerationMatch: Proceed only if generation matches (optional)
         ifGenerationNotMatch: Proceed only if generation doesn't match (optional)
@@ -50,49 +63,27 @@ def upload_object(bucket):
             return _handle_multipart_upload(bucket)
         elif upload_type == "media":
             return _handle_media_upload(bucket)
+        elif upload_type == "resumable":
+            return _handle_resumable_initiate(bucket)
         else:
-            return jsonify({
-                "error": {
-                    "message": f"Unsupported uploadType: {upload_type}. Supported: 'media', 'multipart'"
-                }
-            }), 400
+            return invalid_argument_error(
+                f"Unsupported uploadType: {upload_type}. Supported: 'media', 'multipart', 'resumable'"
+            )
             
     except PreconditionFailedError as e:
-        return jsonify({
-            "error": {
-                "code": 412,
-                "message": str(e)
-            }
-        }), 412
+        return precondition_failed_error(str(e))
     except MultipartParseError as e:
-        return jsonify({
-            "error": {
-                "code": 400,
-                "message": f"Multipart parsing error: {str(e)}"
-            }
-        }), 400
+        return invalid_argument_error(f"Multipart parsing error: {str(e)}")
     except ValueError as e:
         error_msg = str(e)
         if "not found" in error_msg.lower():
-            return jsonify({
-                "error": {
-                    "code": 404,
-                    "message": error_msg
-                }
-            }), 404
-        return jsonify({
-            "error": {
-                "code": 400,
-                "message": error_msg
-            }
-        }), 400
+            if "bucket" in error_msg.lower():
+                return not_found_error(bucket, "bucket")
+            else:
+                return not_found_error("object", "object")
+        return invalid_argument_error(error_msg)
     except Exception as e:
-        return jsonify({
-            "error": {
-                "code": 500,
-                "message": f"Internal server error: {str(e)}"
-            }
-        }), 500
+        return internal_error(f"Internal server error: {str(e)}")
 
 
 def _handle_media_upload(bucket: str):
@@ -206,5 +197,113 @@ def _upload_with_preconditions(bucket: str, object_name: str,
     # Return GCS-compliant JSON response
     response_data = obj.to_dict()
     
-    return jsonify(response_data), 200
+    return jsonify(response_data), 201
+
+
+def _handle_resumable_initiate(bucket: str):
+    """
+    Handle resumable upload initiation (Phase 3)
+    
+    POST /upload/storage/v1/b/{bucket}/o?uploadType=resumable
+    
+    Request body: JSON metadata with object name
+    Response: 200 with Location header and sessionId
+    """
+    # Get JSON metadata
+    data = request.get_json() or {}
+    object_name = data.get("name", "").strip()
+    
+    if not object_name:
+        return invalid_argument_error("Missing 'name' in request body")
+    
+    # Validate object name
+    if not is_valid_object_name(object_name):
+        return invalid_argument_error(f"Invalid object name: {object_name}")
+    
+    # Extract metadata
+    content_type = data.get("contentType", "application/octet-stream")
+    metadata = {
+        "contentType": content_type
+    }
+    
+    # Get total size if provided
+    total_size = data.get("size")
+    
+    # Initiate session
+    session = ResumableUploadService.initiate_session(
+        bucket_name=bucket,
+        object_name=object_name,
+        metadata=metadata,
+        total_size=total_size
+    )
+    
+    # Construct session URL
+    session_url = url_for(
+        'resumable.upload_chunk',
+        session_id=session.session_id,
+        _external=True
+    )
+    
+    # Return response with Location header
+    response = jsonify({"sessionId": session.session_id})
+    response.headers['Location'] = session_url
+    response.status_code = 200
+    
+    return response
+
+
+# Resumable upload blueprint for chunk uploads
+resumable_bp = Blueprint("resumable", __name__)
+
+
+@resumable_bp.route("/upload/resumable/<session_id>", methods=["PUT"])
+def upload_chunk(session_id):
+    """
+    Upload a chunk to a resumable session (Phase 3)
+    
+    PUT /upload/resumable/{session_id}
+    
+    Headers:
+        Content-Length: N
+        Content-Range: bytes start-end/total OR bytes */total
+    
+    Response:
+        308 Resume Incomplete (with Range header) if more chunks needed
+        200 with object metadata if complete
+    """
+    try:
+        # Get chunk data
+        chunk_data = request.get_data()
+        
+        # Get Content-Range header
+        content_range = request.headers.get('Content-Range', '')
+        if not content_range:
+            return invalid_argument_error("Missing Content-Range header")
+        
+        # Upload chunk
+        is_complete, current_offset, object_metadata = ResumableUploadService.upload_chunk(
+            session_id=session_id,
+            chunk_data=chunk_data,
+            content_range=content_range
+        )
+        
+        if is_complete:
+            # Upload complete - return object metadata
+            return jsonify(object_metadata), 201
+        else:
+            # Upload incomplete - return 308 with Range header
+            response = jsonify({"message": "Resume Incomplete"})
+            response.headers['Range'] = f"bytes=0-{current_offset - 1}"
+            response.status_code = 308
+            return response
+            
+    except ValueError as e:
+        error_msg = str(e)
+        if "not found" in error_msg.lower():
+            return not_found_error(session_id, "session")
+        if "offset mismatch" in error_msg.lower():
+            return invalid_argument_error(error_msg)
+        return invalid_argument_error(error_msg)
+    except Exception as e:
+        return internal_error(f"Internal server error: {str(e)}")
 

@@ -9,6 +9,8 @@ Reference: https://cloud.google.com/storage/docs/json_api/v1/objects/get
 from flask import Blueprint, request, send_file, jsonify
 from io import BytesIO
 from app.services.object_versioning_service import ObjectVersioningService
+from app.services.acl_service import ACLService
+from app.utils.gcs_errors import not_found_error, invalid_argument_error, internal_error
 
 download_bp = Blueprint("download", __name__)
 
@@ -33,6 +35,12 @@ def download_object(bucket, object_name):
     try:
         generation = request.args.get("generation", type=int)
         
+        # Phase 4: Check if public read is allowed (anonymous access)
+        # If object is publicRead, allow download without authentication
+        is_public = ACLService.is_public_read(bucket, object_name)
+        # Note: In a real implementation, you'd check auth headers here
+        # For this emulator, we allow all requests if publicRead
+        
         content, version = ObjectVersioningService.download_object_version(
             bucket, object_name, generation
         )
@@ -53,12 +61,10 @@ def download_object(bucket, object_name):
     except ValueError as e:
         error_msg = str(e)
         if "not found" in error_msg.lower():
-            return jsonify({"error": {"message": "Resource not found"}}), 404
-        return jsonify({"error": {"message": error_msg}}), 400
+            if "bucket" in error_msg.lower():
+                return not_found_error(bucket, "bucket")
+            else:
+                return not_found_error(object_name, "object")
+        return invalid_argument_error(error_msg)
     except Exception as e:
-        return jsonify({
-            "error": {
-                "code": 500,
-                "message": f"Internal server error: {str(e)}"
-            }
-        }), 500
+        return internal_error(f"Internal server error: {str(e)}")
