@@ -4,7 +4,7 @@ Lifecycle Rule Model - Phase 4
 Basic lifecycle management (Delete/Archive actions).
 """
 from app.factory import db
-from datetime import datetime
+from datetime import datetime, timezone
 import uuid
 
 
@@ -16,7 +16,7 @@ class LifecycleRule(db.Model):
     bucket_name = db.Column(db.String(63), db.ForeignKey("buckets.id", ondelete="CASCADE"), nullable=False, index=True)
     action = db.Column(db.String(20), nullable=False)  # Delete or Archive
     age_days = db.Column(db.Integer, nullable=False)
-    created_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
+    created_at = db.Column(db.DateTime, nullable=False, default=lambda: datetime.now(timezone.utc))
     
     def to_dict(self):
         """Convert rule to dictionary"""

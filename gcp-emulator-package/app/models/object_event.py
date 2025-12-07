@@ -4,7 +4,7 @@ Object Event Model - Phase 4
 Tracks object change events for local event notification system.
 """
 from app.factory import db
-from datetime import datetime
+from datetime import datetime, timezone
 
 
 class ObjectEvent(db.Model):
@@ -16,7 +16,7 @@ class ObjectEvent(db.Model):
     object_name = db.Column(db.String(1024), nullable=False)
     event_type = db.Column(db.String(50), nullable=False)  # OBJECT_FINALIZE, OBJECT_DELETE, OBJECT_METADATA_UPDATE
     generation = db.Column(db.BigInteger)
-    timestamp = db.Column(db.DateTime, nullable=False, default=datetime.utcnow, index=True)
+    timestamp = db.Column(db.DateTime, nullable=False, default=lambda: datetime.now(timezone.utc), index=True)
     metadata_json = db.Column(db.Text)
     delivered = db.Column(db.Boolean, default=False, index=True)
     

@@ -17,6 +17,9 @@ class Config:
     # Optional: Strict GCS compatibility mode (validates all fields)
     STRICT_GCS_MODE = os.getenv("STRICT_GCS_MODE", "false").lower() == "true"
     
+    # Compute Engine Docker Integration (Phase 3)
+    COMPUTE_DOCKER_ENABLED = os.getenv("COMPUTE_DOCKER_ENABLED", "false").lower() == "true"
+    
     
 class DevelopmentConfig(Config):
     """Development configuration"""

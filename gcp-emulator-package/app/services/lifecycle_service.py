@@ -4,7 +4,7 @@ Lifecycle Service - Phase 4
 Basic lifecycle management (Delete/Archive actions).
 """
 import uuid
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from app.factory import db
 from app.models.lifecycle_rule import LifecycleRule
 from app.models.bucket import Bucket
@@ -56,7 +56,7 @@ class LifecycleService:
             bucket_name=bucket.id,
             action=action,
             age_days=age_days,
-            created_at=datetime.utcnow()
+            created_at=datetime.now(timezone.utc)
         )
         
         db.session.add(rule)
@@ -147,7 +147,7 @@ class LifecycleService:
         Returns:
             Dictionary with counts of affected objects
         """
-        cutoff_date = datetime.utcnow() - timedelta(days=rule.age_days)
+        cutoff_date = datetime.now(timezone.utc) - timedelta(days=rule.age_days)
         
         # Get all objects in the bucket older than cutoff
         objects = Object.query.filter_by(

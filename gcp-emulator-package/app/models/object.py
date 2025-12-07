@@ -1,7 +1,7 @@
 """
 Object model - represents a GCS object (file)
 """
-from datetime import datetime
+from datetime import datetime, timezone
 from sqlalchemy.dialects.postgresql import JSON
 from app.factory import db
 
@@ -24,9 +24,9 @@ class Object(db.Model):
     acl = db.Column(db.String(20), default="private")  # Phase 4: Minimal ACL
     is_latest = db.Column(db.Boolean, default=True, nullable=False)
     deleted = db.Column(db.Boolean, default=False, nullable=False)
-    time_created = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
-    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
-    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    time_created = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
+    created_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
+    updated_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
     meta = db.Column(JSON, default=dict)
     
     # Relationship to versions
@@ -85,8 +85,8 @@ class ObjectVersion(db.Model):
     md5_hash = db.Column(db.String(32))
     crc32c_hash = db.Column(db.String(44))
     file_path = db.Column(db.String(1024))
-    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
-    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
+    updated_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
     deleted = db.Column(db.Boolean, default=False, nullable=False)
     meta = db.Column(JSON, default=dict)
     

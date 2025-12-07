@@ -93,7 +93,7 @@ class EmulatorLogger:
             status: Outcome (success, error, pending)
         """
         entry = {
-            "timestamp": datetime.utcnow().isoformat() + "Z",
+            "timestamp": datetime.now(timezone.utc).isoformat().replace('+00:00', 'Z'),
             "request_id": self._get_request_id(),
             "stage": stage,
             "level": level,

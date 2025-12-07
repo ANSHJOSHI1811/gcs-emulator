@@ -2,7 +2,7 @@
 Bucket model - represents a GCS bucket
 """
 import time
-from datetime import datetime
+from datetime import datetime, timezone
 from sqlalchemy.dialects.postgresql import JSON
 from app.factory import db
 from app.logging import log_formatter_stage
@@ -19,8 +19,8 @@ class Bucket(db.Model):
     storage_class = db.Column(db.String(50), default="STANDARD")
     versioning_enabled = db.Column(db.Boolean, default=False)
     acl = db.Column(db.String(20), default="private")  # Phase 4: Minimal ACL
-    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
-    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
+    updated_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
     meta = db.Column(JSON, default=dict)
     cors = db.Column(db.Text, default=None)  # CORS configuration (JSON)
     notification_configs = db.Column(db.Text, default=None)  # Notification webhooks (JSON)

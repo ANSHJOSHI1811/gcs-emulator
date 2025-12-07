@@ -2,7 +2,7 @@
 """
 GCS Local CLI - LocalStack-style interface for GCS Emulator
 
-Usage:
+Storage Commands:
     python gcslocal.py mb gs://bucket-name              # Make bucket
     python gcslocal.py ls gs://                         # List buckets
     python gcslocal.py ls gs://bucket-name/             # List objects
@@ -10,6 +10,14 @@ Usage:
     python gcslocal.py cp file.txt gs://bucket/file.txt # Upload file
     python gcslocal.py cp gs://bucket/file.txt local/   # Download file
     python gcslocal.py rm gs://bucket/file.txt          # Remove object
+
+Compute Commands:
+    python gcslocal.py compute instances list --zone us-central1-a
+    python gcslocal.py compute instances create vm-1 --zone us-central1-a --machine-type e2-micro
+    python gcslocal.py compute instances start vm-1 --zone us-central1-a
+    python gcslocal.py compute instances stop vm-1 --zone us-central1-a
+    python gcslocal.py compute instances delete vm-1 --zone us-central1-a
+    python gcslocal.py compute instances describe vm-1 --zone us-central1-a
 """
 
 import os
@@ -18,6 +26,14 @@ import argparse
 import requests
 from typing import Optional
 from pathlib import Path
+
+# Import compute CLI
+try:
+    from cli.compute_cli import handle_compute_command
+except ImportError:
+    # If running from different directory
+    sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+    from cli.compute_cli import handle_compute_command
 
 # Configuration
 EMULATOR_HOST = os.environ.get('STORAGE_EMULATOR_HOST', 'http://localhost:8080')
@@ -339,19 +355,57 @@ def remove_object(gs_url: str):
 
 def main():
     """Main CLI entry point"""
+    
+    # Check if this is a compute command (needs special handling)
+    if len(sys.argv) > 1 and sys.argv[1] == 'compute':
+        # For compute commands, parse minimally and pass rest to compute CLI
+        project = DEFAULT_PROJECT
+        
+        # Extract --project if present
+        for i, arg in enumerate(sys.argv):
+            if arg == '--project' and i + 1 < len(sys.argv):
+                project = sys.argv[i + 1]
+                break
+        
+        if len(sys.argv) < 4:
+            print_error("Usage: gcslocal compute <resource> <action> [options]")
+            print_info("  Example: gcslocal compute instances list --zone us-central1-a")
+            return 1
+        
+        resource = sys.argv[2]
+        action = sys.argv[3]
+        remaining_args = sys.argv[4:]
+        
+        return handle_compute_command(
+            resource=resource,
+            action=action,
+            args=remaining_args,
+            emulator_host=EMULATOR_HOST,
+            project=project
+        )
+    
+    # For storage commands, use standard argparse
     parser = argparse.ArgumentParser(
         description='GCS Local CLI - LocalStack-style interface for GCS Emulator',
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
-Examples:
+Storage Examples:
   python gcslocal.py mb gs://my-bucket                # Create bucket
   python gcslocal.py mb gs://my-bucket --location EU  # Create in EU
   python gcslocal.py ls                                # List all buckets
   python gcslocal.py ls gs://my-bucket/               # List objects in bucket
   python gcslocal.py rb gs://my-bucket                # Remove bucket
-  python gcslocal.py cp file.txt gs://bucket/key      # Upload file (TODO)
-  python gcslocal.py cp gs://bucket/key file.txt      # Download file (TODO)
+  python gcslocal.py cp file.txt gs://bucket/key      # Upload file
+  python gcslocal.py cp gs://bucket/key file.txt      # Download file
   python gcslocal.py rm gs://bucket/key               # Remove object
+
+Compute Examples:
+  python gcslocal.py compute instances list --zone us-central1-a
+  python gcslocal.py compute instances create vm-1 --zone us-central1-a --machine-type e2-micro
+  python gcslocal.py compute instances start vm-1 --zone us-central1-a
+  python gcslocal.py compute instances stop vm-1 --zone us-central1-a
+  python gcslocal.py compute instances delete vm-1 --zone us-central1-a
+  python gcslocal.py compute instances describe vm-1 --zone us-central1-a
 
 Environment Variables:
   STORAGE_EMULATOR_HOST   Emulator endpoint (default: http://localhost:8080)
@@ -360,7 +414,7 @@ Environment Variables:
         """
     )
     
-    parser.add_argument('command', help='Command to execute (mb, ls, rb, cp, rm)')
+    parser.add_argument('command', help='Command to execute (mb, ls, rb, cp, rm, compute)')
     parser.add_argument('args', nargs='*', help='Command arguments')
     parser.add_argument('--location', help='Bucket location (for mb command)')
     parser.add_argument('--storage-class', help='Storage class (for mb command)')
@@ -436,7 +490,9 @@ Environment Variables:
         
         else:
             print_error(f"Unknown command: {command}")
-            print_info("Supported commands: mb, ls, rb, cp, rm")
+            print_info("Supported commands: mb, ls, rb, cp, rm, compute")
+            print_info("  Storage: mb, ls, rb, cp, rm")
+            print_info("  Compute: compute instances <action>")
             return 1
     
     except ValueError as e:

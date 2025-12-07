@@ -5,7 +5,7 @@ import os
 import uuid
 from pathlib import Path
 from typing import Optional, Tuple
-from datetime import datetime
+from datetime import datetime, timezone
 from app.factory import db
 from app.models.object import Object, ObjectVersion
 from app.models.bucket import Bucket
@@ -119,10 +119,10 @@ class ObjectVersioningService:
             existing_obj.crc32c_hash = crc32c_hash
             existing_obj.file_path = file_path
             existing_obj.is_latest = True  # Ensure it stays latest
-            existing_obj.updated_at = datetime.utcnow()
+            existing_obj.updated_at = datetime.now(timezone.utc)
             obj = existing_obj
             existing_obj.file_path = file_path
-            existing_obj.updated_at = datetime.utcnow()
+            existing_obj.updated_at = datetime.now(timezone.utc)
             obj = existing_obj
         else:
             # Create new object
@@ -139,7 +139,7 @@ class ObjectVersioningService:
                 file_path=file_path,
                 is_latest=True,
                 deleted=False,
-                time_created=datetime.utcnow(),
+                time_created=datetime.now(timezone.utc),
                 meta={}
             )
             db.session.add(obj)
@@ -368,7 +368,7 @@ class ObjectVersioningService:
         # Update metadata and increment metageneration
         obj.meta.update(metadata)
         obj.metageneration += 1
-        obj.updated_at = datetime.utcnow()
+        obj.updated_at = datetime.now(timezone.utc)
         
         # Update corresponding version record
         version = ObjectVersion.query.filter_by(
@@ -380,7 +380,7 @@ class ObjectVersioningService:
         if version:
             version.meta.update(metadata)
             version.metageneration = obj.metageneration
-            version.updated_at = datetime.utcnow()
+            version.updated_at = datetime.now(timezone.utc)
         
         db.session.commit()
         
@@ -550,7 +550,7 @@ class ObjectVersioningService:
                 obj.md5_hash = previous_version.md5_hash
                 obj.crc32c_hash = previous_version.crc32c_hash
                 obj.file_path = previous_version.file_path
-                obj.updated_at = datetime.utcnow()
+                obj.updated_at = datetime.now(timezone.utc)
             else:
                 # No more versions - mark object as deleted
                 obj.deleted = True

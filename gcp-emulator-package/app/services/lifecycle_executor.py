@@ -5,7 +5,7 @@ Background service that applies lifecycle rules to objects
 import json
 import time
 import threading
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from app.factory import db
 from app.models.bucket import Bucket
 from app.models.object import Object
@@ -139,7 +139,7 @@ class LifecycleExecutor:
                 continue
             
             # Calculate cutoff date
-            cutoff_date = datetime.utcnow() - timedelta(days=age_days)
+            cutoff_date = datetime.now(timezone.utc) - timedelta(days=age_days)
             
             for obj in objects:
                 if obj.created_at < cutoff_date:
@@ -171,7 +171,7 @@ class LifecycleExecutor:
                 details={
                     "bucket": bucket.name,
                     "object": obj.name,
-                    "age_days": (datetime.utcnow() - obj.created_at).days
+                    "age_days": (datetime.now(timezone.utc) - obj.created_at).days
                 }
             )
             
@@ -219,7 +219,7 @@ class LifecycleExecutor:
                 details={
                     "bucket": bucket.name,
                     "object": obj.name,
-                    "age_days": (datetime.utcnow() - obj.created_at).days,
+                    "age_days": (datetime.now(timezone.utc) - obj.created_at).days,
                     "old_class": obj.storage_class
                 }
             )

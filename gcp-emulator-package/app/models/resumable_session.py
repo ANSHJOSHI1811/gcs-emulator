@@ -1,7 +1,7 @@
 """
 ResumableSession model - tracks resumable upload sessions
 """
-from datetime import datetime
+from datetime import datetime, timezone
 from app.factory import db
 
 
@@ -16,7 +16,7 @@ class ResumableSession(db.Model):
     current_offset = db.Column(db.BigInteger, default=0)
     total_size = db.Column(db.BigInteger)
     temp_path = db.Column(db.String(1024))
-    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+    created_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
     
     # Indexes
     __table_args__ = (

@@ -81,6 +81,7 @@ def setup_logging(app: Flask) -> None:
 def register_blueprints(app: Flask) -> None:
     """Register Flask blueprints"""
     from app.routes.bucket_routes import buckets_bp
+    from app.routes.compute_routes import compute_bp
     from app.handlers.objects import objects_bp
     from app.handlers.health import health_bp
     from app.handlers.upload import upload_bp, resumable_bp
@@ -108,6 +109,9 @@ def register_blueprints(app: Flask) -> None:
     app.register_blueprint(cors_bp, url_prefix="/storage/v1")  # CORS configuration
     app.register_blueprint(notifications_bp, url_prefix="/storage/v1")  # Notification webhooks
     app.register_blueprint(lifecycle_config_bp, url_prefix="/storage/v1")  # Lifecycle configuration
+    
+    # Phase 1: Compute Engine (metadata/state management only)
+    app.register_blueprint(compute_bp, url_prefix="/compute")
     
     # Register SDK compatibility middleware
     register_sdk_middleware(app)

@@ -5,7 +5,7 @@ Local event notification system for object changes.
 """
 import uuid
 import json
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 from app.factory import db
 from app.models.object_event import ObjectEvent
 
@@ -44,7 +44,7 @@ class ObjectEventService:
             object_name=object_name,
             event_type=event_type,
             generation=generation,
-            timestamp=datetime.utcnow(),
+            timestamp=datetime.now(timezone.utc),
             metadata_json=json.dumps(metadata) if metadata else None,
             delivered=False
         )
@@ -89,7 +89,6 @@ class ObjectEventService:
     @staticmethod
     def clear_old_events(days: int = 7):
         """Delete events older than specified days"""
-        from datetime import timedelta
-        cutoff = datetime.utcnow() - timedelta(days=days)
+        cutoff = datetime.now(timezone.utc) - timedelta(days=days)
         ObjectEvent.query.filter(ObjectEvent.timestamp < cutoff).delete()
         db.session.commit()

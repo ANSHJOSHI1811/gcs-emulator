@@ -1,7 +1,7 @@
 """
 Project model - represents a GCP project
 """
-from datetime import datetime
+from datetime import datetime, timezone
 from sqlalchemy.dialects.postgresql import JSON
 from app.factory import db
 
@@ -13,8 +13,8 @@ class Project(db.Model):
     id = db.Column(db.String(63), primary_key=True)
     name = db.Column(db.String(255), nullable=False)
     location = db.Column(db.String(50), default="US")
-    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
-    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
+    updated_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
     meta = db.Column(JSON, default=dict)
     
     # Relationships
