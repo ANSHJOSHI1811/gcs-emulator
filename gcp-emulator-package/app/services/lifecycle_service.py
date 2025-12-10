@@ -53,7 +53,7 @@ class LifecycleService:
         
         rule = LifecycleRule(
             rule_id=str(uuid.uuid4()),
-            bucket_name=bucket.id,
+            bucket_id=bucket.id,
             action=action,
             age_days=age_days,
             created_at=datetime.utcnow()
@@ -79,7 +79,7 @@ class LifecycleService:
             bucket = Bucket.query.filter_by(name=bucket_name).first()
             if not bucket:
                 raise ValueError(f"Bucket '{bucket_name}' not found")
-            return LifecycleRule.query.filter_by(bucket_name=bucket.id).all()
+            return LifecycleRule.query.filter_by(bucket_id=bucket.id).all()
         else:
             return LifecycleRule.query.all()
     
@@ -151,7 +151,7 @@ class LifecycleService:
         
         # Get all objects in the bucket older than cutoff
         objects = Object.query.filter_by(
-            bucket_id=rule.bucket_name,
+            bucket_id=rule.bucket_id,
             deleted=False,
             is_latest=True
         ).filter(

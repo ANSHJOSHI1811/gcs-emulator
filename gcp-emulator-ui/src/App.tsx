@@ -11,6 +11,8 @@ import ObjectDetailsPage from './pages/ObjectDetailsPage';
 import ActivityPage from './pages/ActivityPage';
 import EventsPage from './pages/EventsPage';
 import SettingsPage from './pages/SettingsPage';
+import ServiceAccountsPage from './pages/ServiceAccountsPage';
+import RolesPage from './pages/RolesPage';
 
 function App() {
   return (
@@ -31,6 +33,13 @@ function App() {
               <Route path="buckets/:bucketName/objects/:objectName" element={<ObjectDetailsPage />} />
               <Route path="activity" element={<EventsPage />} />
               <Route path="settings" element={<SettingsPage />} />
+            </Route>
+
+            {/* IAM Service Routes */}
+            <Route path="/services/iam">
+              <Route index element={<Navigate to="/services/iam/service-accounts" replace />} />
+              <Route path="service-accounts" element={<ServiceAccountsPage />} />
+              <Route path="roles" element={<RolesPage />} />
             </Route>
 
             {/* Legacy Routes - Redirect to new structure */}

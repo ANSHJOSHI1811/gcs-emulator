@@ -81,7 +81,11 @@ export const serviceCategories: ServiceCategory[] = [
         description: 'Identity and Access Management',
         icon: Shield,
         category: 'IAM & Admin',
-        enabled: false,
+        enabled: true,
+        sidebarLinks: [
+          { label: 'Service Accounts', path: '/services/iam/service-accounts', icon: Shield },
+          { label: 'Roles', path: '/services/iam/roles' },
+        ],
       },
     ],
   },

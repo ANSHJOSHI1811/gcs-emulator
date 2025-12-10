@@ -32,7 +32,7 @@ class Bucket(db.Model):
     # Indexes and constraints
     __table_args__ = (
         db.Index("idx_buckets_project", "project_id"),
-        db.UniqueConstraint("project_id", "name", name="buckets_project_name_unique"),
+        db.UniqueConstraint("name", name="buckets_name_unique"),
     )
     
     def __repr__(self) -> str:

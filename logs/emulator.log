@@ -1,0 +1,3 @@
+{"timestamp":"2025-12-08T06:52:38.869484Z","request_id":"","stage":"stage_6_service","level":"INFO","message":"Starting lifecycle rules execution","status":"success"}
+{"timestamp":"2025-12-08T06:52:38.869484Z","request_id":"","stage":"stage_6_service","level":"INFO","message":"Lifecycle executor started","status":"success","details":{"interval_minutes":5}}
+{"timestamp":"2025-12-08T06:52:38.905316Z","request_id":"","stage":"stage_6_service","level":"INFO","message":"Lifecycle rules execution completed","status":"success","details":{"buckets_processed":0,"total_actions":0}}

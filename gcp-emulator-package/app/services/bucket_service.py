@@ -209,6 +209,7 @@ class BucketService:
     def delete_bucket(bucket_name: str):
         """
         Delete a bucket (hard delete - removes all objects and versions)
+        Uses ObjectVersioningService for consistent deletion logic.
         
         Args:
             bucket_name: The bucket name
@@ -222,7 +223,8 @@ class BucketService:
         import os
         import shutil
         from pathlib import Path
-        from app.models.object import ObjectVersion
+        from app.models.object import Object, ObjectVersion
+        from app.services.object_versioning_service import ObjectVersioningService
         
         BucketService._validate_bucket_name(bucket_name)
         
@@ -242,18 +244,19 @@ class BucketService:
         )
         
         try:
-            # Hard delete: Remove all object versions first
-            ObjectVersion.query.filter_by(bucket_id=bucket.id).delete()
+            # Get all objects in bucket
+            objects = Object.query.filter_by(bucket_id=bucket.id).all()
             
-            # Remove all objects (cascade should handle this, but explicit is safe)
-            from app.models.object import Object
-            Object.query.filter_by(bucket_id=bucket.id).delete()
+            # Use ObjectVersioningService for consistent deletion
+            # This ensures physical files are deleted in proper order
+            for obj in objects:
+                ObjectVersioningService._delete_all_versions(obj)
             
-            # Delete the bucket row
+            # Delete the bucket row from DB
             db.session.delete(bucket)
             db.session.commit()
             
-            # Delete physical storage directory
+            # Delete physical storage directory AFTER successful DB commit
             storage_path = os.getenv("STORAGE_PATH", "./storage")
             bucket_dir = Path(storage_path) / bucket.id
             if bucket_dir.exists():
@@ -301,13 +304,12 @@ class BucketService:
     
     @staticmethod
     def _check_bucket_uniqueness(project_id: str, bucket_name: str) -> None:
-        """Ensure bucket name doesn't already exist within the same project"""
+        """Ensure bucket name is globally unique (GCS specification)"""
         existing_bucket = Bucket.query.filter_by(
-            project_id=project_id,
             name=bucket_name
         ).first()
         if existing_bucket:
-            raise ValueError(f"Bucket name '{bucket_name}' already exists in project '{project_id}'")
+            raise ValueError(f"Bucket name '{bucket_name}' already exists")
 
     @staticmethod
     def _ensure_project_exists(project_id: str) -> None:
