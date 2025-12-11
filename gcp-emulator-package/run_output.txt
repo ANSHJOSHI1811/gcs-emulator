@@ -1,0 +1,1 @@
+2025-12-11 08:45:15,264 - app.factory - INFO - Running in local-only mode (no proxy)

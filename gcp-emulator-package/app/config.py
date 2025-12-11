@@ -42,18 +42,6 @@ class Config:
         # Fallback for non-WSL environments (development on Linux)
         BASE_STORAGE_PATH = os.getenv("STORAGE_PATH", "./storage")
     
-    # Compute Service Settings
-    COMPUTE_ENABLED = os.getenv("COMPUTE_ENABLED", "true").lower() == "true"
-    COMPUTE_NETWORK = os.getenv("COMPUTE_NETWORK", "gcs-compute-net")
-    COMPUTE_PUBLIC_PORT_RANGE = (int(os.getenv("COMPUTE_PORT_MIN", "30000")), 
-                                  int(os.getenv("COMPUTE_PORT_MAX", "40000")))
-    COMPUTE_SYNC_INTERVAL = int(os.getenv("COMPUTE_SYNC_INTERVAL", "5"))  # seconds
-    
-    # Docker configuration (WSL-native)
-    # Docker Engine runs inside WSL - SDK auto-detects /var/run/docker.sock
-    DOCKER_ENABLED = True
-    DOCKER_SOCKET = "/var/run/docker.sock"  # Standard Linux socket path
-    
     
 class DevelopmentConfig(Config):
     """Development configuration for WSL environment"""

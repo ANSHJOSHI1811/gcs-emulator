@@ -1,0 +1,7 @@
+ERROR: gcloud crashed (ConnectionError): HTTPConnectionPool(host='localhost', port=8080): Max retries exceeded with url: /compute/v1/projects/test-project/zones/us-central1-a?alt=json (Caused by NewConnectionError('<urllib3.connection.HTTPConnection object at 0x0000027BA883D550>: Failed to establish a new connection: [WinError 10061] No connection could be made because the target machine actively refused it'))
+
+If you would like to report this issue, please run the following command:
+  gcloud feedback
+
+To check gcloud for common problems, please run the following command:
+  gcloud info --run-diagnostics
