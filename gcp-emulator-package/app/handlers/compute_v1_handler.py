@@ -12,6 +12,8 @@ import json
 from app.models.instance import Instance
 from app.models.compute_operation import ComputeOperation
 from app.factory import db
+from app.utils.machine_types import get_machine_type_specs, is_valid_machine_type, list_machine_types
+from app.utils.zones import is_valid_zone, list_zones, get_zone_info
 
 logger = logging.getLogger(__name__)
 
@@ -65,13 +67,17 @@ def validate_instance_name(name):
 
 
 def validate_zone(zone):
-    """Validate zone format"""
+    """
+    Validate zone against catalog
+    Phase 3: Now checks against static zone catalog
+    """
     if not zone:
         return False, "Zone is required"
     
-    # Basic validation: zone should match pattern like us-central1-a
-    if not re.match(r'^[a-z]+-[a-z]+\d+-[a-z]$', zone):
-        return False, f"Invalid zone format: {zone}"
+    if not is_valid_zone(zone):
+        # Provide helpful error with available zones
+        available = list_zones()[:10]  # Show first 10
+        return False, f"Invalid zone '{zone}'. Available zones include: {', '.join(available)}..."
     
     return True, None
 
@@ -120,8 +126,11 @@ class ComputeV1Handler:
         Create (insert) a new instance
         """
         try:
+            print(f"[DEBUG] insert_instance called for zone: {zone}")
+            
             # Validate zone format
             zone_valid, zone_error = validate_zone(zone)
+            print(f"[DEBUG] Zone validation result: valid={zone_valid}, error={zone_error}")
             if not zone_valid:
                 return gcp_error_response(400, zone_error)
             
@@ -153,15 +162,24 @@ class ComputeV1Handler:
             machine_type_url = data.get('machineType', '')
             machine_type = machine_type_url.split('/')[-1] if machine_type_url else 'e2-micro'
             
-            # Map machine type to CPU/memory (simplified)
-            machine_specs = {
-                'e2-micro': (1, 1024),
-                'e2-small': (2, 2048),
-                'e2-medium': (2, 4096),
-                'n1-standard-1': (1, 3840),
-                'n1-standard-2': (2, 7680),
-            }
-            cpu, memory = machine_specs.get(machine_type, (1, 512))
+            logger.info(f"Extracted machine_type: '{machine_type}' from URL: '{machine_type_url}'")
+            
+            # Phase 3: Validate machine type against catalog
+            if not is_valid_machine_type(machine_type):
+                available = list_machine_types()[:10]  # Show first 10
+                logger.warning(f"Invalid machine type '{machine_type}' rejected")
+                return gcp_error_response(
+                    400,
+                    f"Invalid machine type '{machine_type}'. Available types include: {', '.join(available)}..."
+                )
+            
+            # Get machine type specifications from catalog
+            try:
+                machine_specs = get_machine_type_specs(machine_type)
+                cpu = machine_specs['cpus']
+                memory = machine_specs['memory_mb']
+            except ValueError as e:
+                return gcp_error_response(400, str(e))
             
             # Extract source image from disks
             disks = data.get('disks', [])
