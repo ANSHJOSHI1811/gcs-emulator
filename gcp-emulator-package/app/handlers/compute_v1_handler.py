@@ -6,12 +6,73 @@ from flask import jsonify, request
 from datetime import datetime
 import logging
 import uuid
+import re
 
 from app.models.instance import Instance
 from app.models.compute_operation import ComputeOperation
 from app.factory import db
 
 logger = logging.getLogger(__name__)
+
+
+def gcp_error_response(code, message, errors=None):
+    """
+    Create GCP-compliant error response
+    Matches official Compute Engine API error format
+    """
+    error_body = {
+        "error": {
+            "code": code,
+            "message": message,
+            "errors": errors or [{"message": message, "domain": "global", "reason": _map_code_to_reason(code)}]
+        }
+    }
+    return jsonify(error_body), code
+
+
+def _map_code_to_reason(code):
+    """Map HTTP status code to GCP error reason"""
+    reason_map = {
+        400: "invalid",
+        404: "notFound",
+        409: "alreadyExists",
+        412: "conditionNotMet",
+        500: "backendError",
+        503: "backendError"
+    }
+    return reason_map.get(code, "backendError")
+
+
+def validate_instance_name(name):
+    """
+    Validate instance name per GCP rules:
+    - 1-63 characters
+    - Lowercase letters, numbers, hyphens
+    - Must start with lowercase letter
+    - Must not end with hyphen
+    """
+    if not name:
+        return False, "Instance name is required"
+    
+    if len(name) < 1 or len(name) > 63:
+        return False, "Instance name must be between 1 and 63 characters"
+    
+    if not re.match(r'^[a-z]([-a-z0-9]*[a-z0-9])?$', name):
+        return False, "Instance name must start with lowercase letter and contain only lowercase letters, numbers, and hyphens"
+    
+    return True, None
+
+
+def validate_zone(zone):
+    """Validate zone format"""
+    if not zone:
+        return False, "Zone is required"
+    
+    # Basic validation: zone should match pattern like us-central1-a
+    if not re.match(r'^[a-z]+-[a-z]+\d+-[a-z]$', zone):
+        return False, f"Invalid zone format: {zone}"
+    
+    return True, None
 
 
 class ComputeV1Handler:
@@ -58,14 +119,34 @@ class ComputeV1Handler:
         Create (insert) a new instance
         """
         try:
+            # Validate zone format
+            zone_valid, zone_error = validate_zone(zone)
+            if not zone_valid:
+                return gcp_error_response(400, zone_error)
+            
+            # Parse request body
             data = request.get_json()
             if not data:
-                return jsonify({'error': {'message': 'Request body required'}}), 400
+                return gcp_error_response(400, "Request body is required")
             
-            # Extract instance name
+            # Validate instance name
             name = data.get('name')
-            if not name:
-                return jsonify({'error': {'message': 'Instance name required'}}), 400
+            name_valid, name_error = validate_instance_name(name)
+            if not name_valid:
+                return gcp_error_response(400, name_error)
+            
+            # Check for duplicate instance name (409 Conflict)
+            existing = Instance.query.filter_by(
+                name=name,
+                project_id=project,
+                zone=zone
+            ).first()
+            
+            if existing:
+                return gcp_error_response(
+                    409, 
+                    f"The resource 'projects/{project}/zones/{zone}/instances/{name}' already exists"
+                )
             
             # Extract machine type (e.g., "zones/us-central1-a/machineTypes/e2-micro")
             machine_type_url = data.get('machineType', '')
@@ -105,12 +186,7 @@ class ComputeV1Handler:
             )
             
             if not instance:
-                return jsonify({
-                    'error': {
-                        'code': 500,
-                        'message': 'Failed to create instance'
-                    }
-                }), 500
+                return gcp_error_response(500, "Failed to create instance")
             
             # Update instance with zone and machine_type
             instance.zone = zone
@@ -131,12 +207,7 @@ class ComputeV1Handler:
             
         except Exception as e:
             logger.error(f"Error in insert_instance: {e}", exc_info=True)
-            return jsonify({
-                'error': {
-                    'code': 500,
-                    'message': f'Internal server error: {str(e)}'
-                }
-            }), 500
+            return gcp_error_response(500, f"Internal server error: {str(e)}")
     
     def list_instances(self, project, zone):
         """
@@ -144,6 +215,11 @@ class ComputeV1Handler:
         List all instances in a zone
         """
         try:
+            # Validate zone format
+            zone_valid, zone_error = validate_zone(zone)
+            if not zone_valid:
+                return gcp_error_response(400, zone_error)
+            
             # Get all instances for project/zone
             instances = Instance.query.filter_by(
                 project_id=project,
@@ -162,12 +238,7 @@ class ComputeV1Handler:
             
         except Exception as e:
             logger.error(f"Error in list_instances: {e}", exc_info=True)
-            return jsonify({
-                'error': {
-                    'code': 500,
-                    'message': f'Internal server error: {str(e)}'
-                }
-            }), 500
+            return gcp_error_response(500, f"Internal server error: {str(e)}")
     
     def get_instance(self, project, zone, instance_name):
         """
@@ -175,6 +246,16 @@ class ComputeV1Handler:
         Get single instance details
         """
         try:
+            # Validate zone format
+            zone_valid, zone_error = validate_zone(zone)
+            if not zone_valid:
+                return gcp_error_response(400, zone_error)
+            
+            # Validate instance name
+            name_valid, name_error = validate_instance_name(instance_name)
+            if not name_valid:
+                return gcp_error_response(400, name_error)
+            
             instance = Instance.query.filter_by(
                 name=instance_name,
                 project_id=project,
@@ -182,23 +263,16 @@ class ComputeV1Handler:
             ).first()
             
             if not instance:
-                return jsonify({
-                    'error': {
-                        'code': 404,
-                        'message': f'Instance {instance_name} not found'
-                    }
-                }), 404
+                return gcp_error_response(
+                    404, 
+                    f"The resource 'projects/{project}/zones/{zone}/instances/{instance_name}' was not found"
+                )
             
             return jsonify(instance.to_gcp_dict()), 200
             
         except Exception as e:
             logger.error(f"Error in get_instance: {e}", exc_info=True)
-            return jsonify({
-                'error': {
-                    'code': 500,
-                    'message': f'Internal server error: {str(e)}'
-                }
-            }), 500
+            return gcp_error_response(500, f"Internal server error: {str(e)}")
     
     def delete_instance(self, project, zone, instance_name):
         """
@@ -206,6 +280,16 @@ class ComputeV1Handler:
         Delete (terminate) an instance
         """
         try:
+            # Validate zone format
+            zone_valid, zone_error = validate_zone(zone)
+            if not zone_valid:
+                return gcp_error_response(400, zone_error)
+            
+            # Validate instance name
+            name_valid, name_error = validate_instance_name(instance_name)
+            if not name_valid:
+                return gcp_error_response(400, name_error)
+            
             instance = Instance.query.filter_by(
                 name=instance_name,
                 project_id=project,
@@ -213,23 +297,16 @@ class ComputeV1Handler:
             ).first()
             
             if not instance:
-                return jsonify({
-                    'error': {
-                        'code': 404,
-                        'message': f'Instance {instance_name} not found'
-                    }
-                }), 404
+                return gcp_error_response(
+                    404, 
+                    f"The resource 'projects/{project}/zones/{zone}/instances/{instance_name}' was not found"
+                )
             
             # Terminate using existing service
             success = self.compute_service.terminate_instance(instance.id)
             
             if not success:
-                return jsonify({
-                    'error': {
-                        'code': 500,
-                        'message': 'Failed to delete instance'
-                    }
-                }), 500
+                return gcp_error_response(500, "Failed to delete instance")
             
             # Create operation
             operation = self._create_operation(
@@ -244,12 +321,7 @@ class ComputeV1Handler:
             
         except Exception as e:
             logger.error(f"Error in delete_instance: {e}", exc_info=True)
-            return jsonify({
-                'error': {
-                    'code': 500,
-                    'message': f'Internal server error: {str(e)}'
-                }
-            }), 500
+            return gcp_error_response(500, f"Internal server error: {str(e)}")
     
     def start_instance(self, project, zone, instance_name):
         """
@@ -257,6 +329,16 @@ class ComputeV1Handler:
         Start a stopped instance
         """
         try:
+            # Validate zone format
+            zone_valid, zone_error = validate_zone(zone)
+            if not zone_valid:
+                return gcp_error_response(400, zone_error)
+            
+            # Validate instance name
+            name_valid, name_error = validate_instance_name(instance_name)
+            if not name_valid:
+                return gcp_error_response(400, name_error)
+            
             instance = Instance.query.filter_by(
                 name=instance_name,
                 project_id=project,
@@ -264,23 +346,23 @@ class ComputeV1Handler:
             ).first()
             
             if not instance:
-                return jsonify({
-                    'error': {
-                        'code': 404,
-                        'message': f'Instance {instance_name} not found'
-                    }
-                }), 404
+                return gcp_error_response(
+                    404, 
+                    f"The resource 'projects/{project}/zones/{zone}/instances/{instance_name}' was not found"
+                )
+            
+            # Check if already running
+            if instance.state == 'running':
+                return gcp_error_response(
+                    400, 
+                    f"Instance is already in RUNNING state"
+                )
             
             # Start using existing service
             success = self.compute_service.start_instance(instance.id)
             
             if not success:
-                return jsonify({
-                    'error': {
-                        'code': 500,
-                        'message': 'Failed to start instance'
-                    }
-                }), 500
+                return gcp_error_response(500, "Failed to start instance")
             
             # Create operation
             operation = self._create_operation(
@@ -295,12 +377,7 @@ class ComputeV1Handler:
             
         except Exception as e:
             logger.error(f"Error in start_instance: {e}", exc_info=True)
-            return jsonify({
-                'error': {
-                    'code': 500,
-                    'message': f'Internal server error: {str(e)}'
-                }
-            }), 500
+            return gcp_error_response(500, f"Internal server error: {str(e)}")
     
     def stop_instance(self, project, zone, instance_name):
         """
@@ -308,6 +385,16 @@ class ComputeV1Handler:
         Stop a running instance
         """
         try:
+            # Validate zone format
+            zone_valid, zone_error = validate_zone(zone)
+            if not zone_valid:
+                return gcp_error_response(400, zone_error)
+            
+            # Validate instance name
+            name_valid, name_error = validate_instance_name(instance_name)
+            if not name_valid:
+                return gcp_error_response(400, name_error)
+            
             instance = Instance.query.filter_by(
                 name=instance_name,
                 project_id=project,
@@ -315,23 +402,23 @@ class ComputeV1Handler:
             ).first()
             
             if not instance:
-                return jsonify({
-                    'error': {
-                        'code': 404,
-                        'message': f'Instance {instance_name} not found'
-                    }
-                }), 404
+                return gcp_error_response(
+                    404, 
+                    f"The resource 'projects/{project}/zones/{zone}/instances/{instance_name}' was not found"
+                )
+            
+            # Check if already stopped/terminated
+            if instance.state in ['stopped', 'terminated']:
+                return gcp_error_response(
+                    400, 
+                    f"Instance is already in TERMINATED state"
+                )
             
             # Stop using existing service
             success = self.compute_service.stop_instance(instance.id)
             
             if not success:
-                return jsonify({
-                    'error': {
-                        'code': 500,
-                        'message': 'Failed to stop instance'
-                    }
-                }), 500
+                return gcp_error_response(500, "Failed to stop instance")
             
             # Create operation
             operation = self._create_operation(
@@ -346,12 +433,7 @@ class ComputeV1Handler:
             
         except Exception as e:
             logger.error(f"Error in stop_instance: {e}", exc_info=True)
-            return jsonify({
-                'error': {
-                    'code': 500,
-                    'message': f'Internal server error: {str(e)}'
-                }
-            }), 500
+            return gcp_error_response(500, f"Internal server error: {str(e)}")
     
     def get_operation(self, project, zone, operation_name):
         """
@@ -359,6 +441,11 @@ class ComputeV1Handler:
         Get operation status
         """
         try:
+            # Validate zone format
+            zone_valid, zone_error = validate_zone(zone)
+            if not zone_valid:
+                return gcp_error_response(400, zone_error)
+            
             operation = ComputeOperation.query.filter_by(
                 name=operation_name,
                 project_id=project,
@@ -366,20 +453,13 @@ class ComputeV1Handler:
             ).first()
             
             if not operation:
-                return jsonify({
-                    'error': {
-                        'code': 404,
-                        'message': f'Operation {operation_name} not found'
-                    }
-                }), 404
+                return gcp_error_response(
+                    404, 
+                    f"The resource 'projects/{project}/zones/{zone}/operations/{operation_name}' was not found"
+                )
             
             return jsonify(operation.to_gcp_dict()), 200
             
         except Exception as e:
             logger.error(f"Error in get_operation: {e}", exc_info=True)
-            return jsonify({
-                'error': {
-                    'code': 500,
-                    'message': f'Internal server error: {str(e)}'
-                }
-            }), 500
+            return gcp_error_response(500, f"Internal server error: {str(e)}")
