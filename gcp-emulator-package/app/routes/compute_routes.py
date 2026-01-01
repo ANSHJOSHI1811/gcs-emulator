@@ -36,6 +36,13 @@ def create_compute_blueprint(compute_service) -> Blueprint:
         methods=['POST']
     )
     
+    # POST /compute/instances/<instance_id>/start - Start instance
+    compute_bp.add_url_rule(
+        '/instances/<instance_id>/start',
+        view_func=handler.start_instance,
+        methods=['POST']
+    )
+    
     # POST /compute/instances/<instance_id>/terminate - Terminate instance
     compute_bp.add_url_rule(
         '/instances/<instance_id>/terminate',

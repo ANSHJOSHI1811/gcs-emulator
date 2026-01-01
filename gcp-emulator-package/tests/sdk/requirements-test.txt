@@ -1,0 +1,22 @@
+# Test dependencies for SDK integration tests
+pytest>=7.4.0
+pytest-cov>=4.1.0
+pytest-xdist>=3.3.0  # For parallel test execution
+
+# Google Cloud SDKs
+google-cloud-storage>=2.10.0
+google-cloud-compute>=1.14.0
+
+# Google Auth
+google-auth>=2.23.0
+google-api-core>=2.11.0
+
+# Database
+SQLAlchemy>=2.0.0
+psycopg2-binary>=2.9.0
+
+# HTTP client for REST API tests
+requests>=2.31.0
+
+# Test utilities
+faker>=19.0.0  # For generating test data

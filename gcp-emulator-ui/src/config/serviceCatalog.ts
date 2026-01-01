@@ -48,12 +48,15 @@ export const serviceCategories: ServiceCategory[] = [
     name: 'Compute',
     services: [
       {
-        id: 'compute-engine',
+        id: 'compute',
         name: 'Compute Engine',
-        description: 'Virtual machines running in Google\'s data center',
+        description: 'Virtual machines running in Docker containers',
         icon: Cpu,
         category: 'Compute',
-        enabled: false,
+        enabled: true,
+        sidebarLinks: [
+          { label: 'Instances', path: '/services/compute/instances', icon: Cpu },
+        ],
       },
     ],
   },

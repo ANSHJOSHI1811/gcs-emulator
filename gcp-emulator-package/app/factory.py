@@ -149,17 +149,25 @@ def register_blueprints(app: Flask) -> None:
     app.register_blueprint(iam_policies_bp)  # IAM policy management
     app.register_blueprint(roles_bp)  # IAM role management
     
-    # PHASE 1: Register Compute Engine blueprint (if enabled)
+    # PHASE 1: Register Compute Engine blueprints (if enabled)
     if app.config.get('COMPUTE_ENABLED', False):
         from app.routes.compute_routes import create_compute_blueprint
+        from app.routes.compute_v1_routes import create_compute_v1_blueprint
         from app.services.compute_service import ComputeService
         try:
             compute_service = ComputeService()
+            
+            # Legacy custom API (for existing UI)
             compute_bp = create_compute_blueprint(compute_service)
             app.register_blueprint(compute_bp)  # URL prefix: /compute
             
+            # GCP Compute Engine API v1 (for SDK compatibility)
+            compute_v1_bp = create_compute_v1_blueprint(compute_service)
+            app.register_blueprint(compute_v1_bp)  # URL prefix: /compute/v1
+            
             # Store compute_service in app config for sync worker
             app.config['COMPUTE_SERVICE'] = compute_service
+            app.logger.info("Compute Engine enabled with SDK compatibility")
         except Exception as e:
             app.logger.warning(f"Compute Engine disabled due to error: {e}")
             app.config['COMPUTE_SERVICE'] = None

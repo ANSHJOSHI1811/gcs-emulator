@@ -35,7 +35,8 @@ class ComputeService:
         name: str,
         image: str,
         cpu: int = 1,
-        memory: int = 512
+        memory: int = 512,
+        project_id: str = 'test-project'
     ) -> Optional[Instance]:
         """
         Create and launch a new instance
@@ -45,6 +46,7 @@ class ComputeService:
             image: Docker image (e.g., 'alpine:latest')
             cpu: Number of CPU cores
             memory: Memory in MB
+            project_id: GCP project ID
         
         Returns:
             Instance object or None if failed
@@ -60,6 +62,7 @@ class ComputeService:
             instance = Instance(
                 id=instance_id,
                 name=name,
+                project_id=project_id,
                 image=image,
                 cpu=cpu,
                 memory_mb=memory,
@@ -110,37 +113,92 @@ class ComputeService:
         Returns:
             True if successful, False otherwise
         """
-        instance = Instance.query.filter_by(id=instance_id).first()
-        if not instance:
-            logger.warning(f"Instance not found: {instance_id}")
-            return False
-        
-        if instance.state == 'stopped':
-            logger.info(f"Instance {instance_id} already stopped")
-            return True
-        
-        if instance.state != 'running':
-            logger.warning(f"Cannot stop instance {instance_id} in state: {instance.state}")
-            return False
-        
-        if not instance.container_id:
-            logger.error(f"Instance {instance_id} has no container ID")
-            return False
-        
-        # Update state to stopping
-        instance.state = 'stopping'
-        db.session.commit()
-        
-        # Stop Docker container
-        if self.docker_driver.stop_container(instance.container_id):
-            instance.state = 'stopped'
+        try:
+            instance = Instance.query.filter_by(id=instance_id).first()
+            if not instance:
+                logger.warning(f"Instance not found: {instance_id}")
+                return False
+            
+            if instance.state == 'stopped':
+                logger.info(f"Instance {instance_id} already stopped")
+                return True
+            
+            # Allow stopping from 'stopping' state (recovery)
+            if instance.state not in ['running', 'stopping']:
+                logger.warning(f"Cannot stop instance {instance_id} in state: {instance.state}")
+                return False
+            
+            if not instance.container_id:
+                logger.error(f"Instance {instance_id} has no container ID")
+                return False
+            
+            # Update state to stopping
+            instance.state = 'stopping'
             db.session.commit()
-            logger.info(f"Stopped instance {instance_id}")
-            return True
-        else:
-            # Rollback state if Docker operation failed
-            instance.state = 'running'
-            db.session.commit()
+            
+            # Stop Docker container
+            if self.docker_driver.stop_container(instance.container_id):
+                instance.state = 'stopped'
+                db.session.commit()
+                logger.info(f"Stopped instance {instance_id}")
+                return True
+            else:
+                # Rollback state if Docker operation failed
+                instance.state = 'running'
+                db.session.commit()
+                logger.error(f"Failed to stop Docker container for instance {instance_id}")
+                return False
+        except Exception as e:
+            # Ensure we rollback state on any error
+            try:
+                if instance and instance.state == 'stopping':
+                    instance.state = 'running'
+                    db.session.commit()
+            except:
+                db.session.rollback()
+            logger.error(f"Exception in stop_instance: {e}", exc_info=True)
+            return False
+    
+    def start_instance(self, instance_id: str) -> bool:
+        """
+        Start a stopped instance
+        
+        Args:
+            instance_id: Instance ID
+        
+        Returns:
+            True if successful, False otherwise
+        """
+        try:
+            instance = Instance.query.filter_by(id=instance_id).first()
+            if not instance:
+                logger.warning(f"Instance not found: {instance_id}")
+                return False
+            
+            if instance.state == 'running':
+                logger.info(f"Instance {instance_id} already running")
+                return True
+            
+            if instance.state not in ['stopped', 'stopping']:
+                logger.warning(f"Cannot start instance {instance_id} in state: {instance.state}")
+                return False
+            
+            if not instance.container_id:
+                logger.error(f"Instance {instance_id} has no container ID")
+                return False
+            
+            # Start Docker container
+            if self.docker_driver.start_container(instance.container_id):
+                instance.state = 'running'
+                db.session.commit()
+                logger.info(f"Started instance {instance_id}")
+                return True
+            else:
+                logger.error(f"Failed to start Docker container for instance {instance_id}")
+                return False
+        except Exception as e:
+            db.session.rollback()
+            logger.error(f"Exception in start_instance: {e}", exc_info=True)
             return False
     
     def terminate_instance(self, instance_id: str) -> bool:
@@ -153,29 +211,40 @@ class ComputeService:
         Returns:
             True if successful, False otherwise
         """
-        instance = Instance.query.filter_by(id=instance_id).first()
-        if not instance:
-            logger.warning(f"Instance not found: {instance_id}")
-            return False
-        
-        if instance.state == 'terminated':
-            logger.info(f"Instance {instance_id} already terminated")
+        try:
+            instance = Instance.query.filter_by(id=instance_id).first()
+            if not instance:
+                logger.warning(f"Instance not found: {instance_id}")
+                return False
+            
+            if instance.state == 'terminated':
+                logger.info(f"Instance {instance_id} already terminated")
+                return True
+            
+            # Stop container if running
+            if instance.state == 'running' and instance.container_id:
+                try:
+                    self.docker_driver.stop_container(instance.container_id)
+                except Exception as e:
+                    logger.warning(f"Failed to stop container during termination: {e}")
+            
+            # Remove Docker container
+            if instance.container_id:
+                try:
+                    self.docker_driver.remove_container(instance.container_id, force=True)
+                except Exception as e:
+                    logger.warning(f"Failed to remove container during termination: {e}")
+            
+            # Update instance state
+            instance.state = 'terminated'
+            db.session.commit()
+            
+            logger.info(f"Terminated instance {instance_id}")
             return True
-        
-        # Stop container if running
-        if instance.state == 'running' and instance.container_id:
-            self.docker_driver.stop_container(instance.container_id)
-        
-        # Remove Docker container
-        if instance.container_id:
-            self.docker_driver.remove_container(instance.container_id, force=True)
-        
-        # Update instance state
-        instance.state = 'terminated'
-        db.session.commit()
-        
-        logger.info(f"Terminated instance {instance_id}")
-        return True
+        except Exception as e:
+            db.session.rollback()
+            logger.error(f"Exception in terminate_instance: {e}", exc_info=True)
+            return False
     
     def describe_instances(
         self,

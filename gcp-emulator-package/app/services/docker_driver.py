@@ -203,45 +203,6 @@ class DockerDriver:
             logger.error(f"Failed to get state for container {container_id[:12]}: {e}")
             return None
     
-    def start_container(self, container_id: str) -> bool:
-        """
-        Start a stopped container
-        
-        Args:
-            container_id: Docker container ID
-        
-        Returns:
-            True if successful, False otherwise
-        """
-        try:
-            container = self.client.containers.get(container_id)
-            container.start()
-            logger.info(f"Started container: {container_id[:12]}")
-            return True
-        except APIError as e:
-            logger.error(f"Failed to start container {container_id}: {e}")
-            return False
-    
-    def stop_container(self, container_id: str, timeout: int = 10) -> bool:
-        """
-        Stop a running container
-        
-        Args:
-            container_id: Docker container ID
-            timeout: Seconds to wait before killing
-        
-        Returns:
-            True if successful, False otherwise
-        """
-        try:
-            container = self.client.containers.get(container_id)
-            container.stop(timeout=timeout)
-            logger.info(f"Stopped container: {container_id[:12]}")
-            return True
-        except APIError as e:
-            logger.error(f"Failed to stop container {container_id}: {e}")
-            return False
-    
     def remove_container(self, container_id: str, force: bool = True) -> bool:
         """
         Remove a container

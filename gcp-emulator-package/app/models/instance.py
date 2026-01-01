@@ -17,6 +17,11 @@ class Instance(db.Model):
     # Primary identifiers
     id = db.Column(db.String(36), primary_key=True)  # UUID format
     name = db.Column(db.String(255), nullable=False)
+    project_id = db.Column(db.String(255), nullable=False, default='test-project')
+    
+    # GCP Compute API v1 fields
+    zone = db.Column(db.String(100), default='us-central1-a')
+    machine_type = db.Column(db.String(100), default='e2-micro')  # Machine type name (not full URL)
     
     # Instance configuration
     image = db.Column(db.String(500), nullable=False)  # Docker image name
@@ -43,6 +48,7 @@ class Instance(db.Model):
         return {
             'id': self.id,
             'name': self.name,
+            'project_id': self.project_id,
             'image': self.image,
             'cpu': self.cpu,
             'memory_mb': self.memory_mb,
@@ -50,6 +56,130 @@ class Instance(db.Model):
             'state': self.state,
             'created_at': self.created_at.isoformat() if self.created_at else None,
             'updated_at': self.updated_at.isoformat() if self.updated_at else None
+        }
+    
+    def to_gcp_dict(self):
+        """
+        Convert to GCP Compute Engine Instance format
+        https://cloud.google.com/compute/docs/reference/rest/v1/instances
+        """
+        # Map internal state to GCP status
+        status_map = {
+            'pending': 'PROVISIONING',
+            'running': 'RUNNING',
+            'stopping': 'STOPPING',
+            'stopped': 'TERMINATED',
+            'terminated': 'TERMINATED'
+        }
+        
+        zone = self.zone or 'us-central1-a'
+        machine_type = self.machine_type or 'e2-micro'
+        
+        # Generate numeric ID (GCP uses strings but they're numeric)
+        numeric_id = str(hash(self.id) % (10 ** 16))
+        
+        # RFC 3339 timestamp
+        creation_timestamp = self.created_at.strftime('%Y-%m-%dT%H:%M:%S.%f')[:-3] + 'Z'
+        
+        return {
+            "kind": "compute#instance",
+            "id": numeric_id,
+            "creationTimestamp": creation_timestamp,
+            "name": self.name,
+            "description": f"Emulated instance backed by Docker ({self.image})",
+            "tags": {
+                "items": [],
+                "fingerprint": "42WmSpB8rSM="
+            },
+            "machineType": f"https://www.googleapis.com/compute/v1/projects/{self.project_id}/zones/{zone}/machineTypes/{machine_type}",
+            "status": status_map.get(self.state, 'TERMINATED'),
+            "zone": f"https://www.googleapis.com/compute/v1/projects/{self.project_id}/zones/{zone}",
+            "canIpForward": False,
+            "networkInterfaces": [
+                {
+                    "kind": "compute#networkInterface",
+                    "network": f"https://www.googleapis.com/compute/v1/projects/{self.project_id}/global/networks/default",
+                    "subnetwork": f"https://www.googleapis.com/compute/v1/projects/{self.project_id}/regions/us-central1/subnetworks/default",
+                    "networkIP": "10.128.0.2",
+                    "name": "nic0",
+                    "accessConfigs": [
+                        {
+                            "kind": "compute#accessConfig",
+                            "type": "ONE_TO_ONE_NAT",
+                            "name": "External NAT",
+                            "natIP": "34.172.123.45",
+                            "networkTier": "PREMIUM"
+                        }
+                    ],
+                    "fingerprint": "QWxhZGRpbjpvc"
+                }
+            ],
+            "disks": [
+                {
+                    "kind": "compute#attachedDisk",
+                    "type": "PERSISTENT",
+                    "mode": "READ_WRITE",
+                    "source": f"https://www.googleapis.com/compute/v1/projects/{self.project_id}/zones/{zone}/disks/{self.name}",
+                    "deviceName": self.name,
+                    "index": 0,
+                    "boot": True,
+                    "autoDelete": True,
+                    "licenses": [
+                        "https://www.googleapis.com/compute/v1/projects/debian-cloud/global/licenses/debian-11-bullseye"
+                    ],
+                    "interface": "SCSI",
+                    "guestOsFeatures": [
+                        {"type": "UEFI_COMPATIBLE"},
+                        {"type": "VIRTIO_SCSI_MULTIQUEUE"}
+                    ]
+                }
+            ],
+            "metadata": {
+                "kind": "compute#metadata",
+                "fingerprint": "example123",
+                "items": [
+                    {
+                        "key": "emulator",
+                        "value": "true"
+                    },
+                    {
+                        "key": "docker_image",
+                        "value": self.image
+                    },
+                    {
+                        "key": "cpu_count",
+                        "value": str(self.cpu)
+                    },
+                    {
+                        "key": "memory_mb",
+                        "value": str(self.memory_mb)
+                    }
+                ]
+            },
+            "serviceAccounts": [
+                {
+                    "email": f"{self.project_id}-compute@developer.gserviceaccount.com",
+                    "scopes": [
+                        "https://www.googleapis.com/auth/devstorage.read_only",
+                        "https://www.googleapis.com/auth/logging.write",
+                        "https://www.googleapis.com/auth/monitoring.write",
+                        "https://www.googleapis.com/auth/servicecontrol",
+                        "https://www.googleapis.com/auth/service.management.readonly",
+                        "https://www.googleapis.com/auth/trace.append"
+                    ]
+                }
+            ],
+            "selfLink": f"https://www.googleapis.com/compute/v1/projects/{self.project_id}/zones/{zone}/instances/{self.name}",
+            "scheduling": {
+                "onHostMaintenance": "MIGRATE",
+                "automaticRestart": True,
+                "preemptible": False
+            },
+            "cpuPlatform": "Intel Broadwell",
+            "labelFingerprint": "42WmSpB8rSM=",
+            "startRestricted": False,
+            "deletionProtection": False,
+            "fingerprint": "example-fingerprint"
         }
     
     def __repr__(self):
