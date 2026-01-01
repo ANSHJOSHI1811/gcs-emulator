@@ -1,111 +1,67 @@
-import { apiClient } from './client';
+import { Instance } from '../types/compute';
 
-// ============================================================================
-// Types
-// ============================================================================
+const API_BASE_URL = 'http://localhost:8080';
 
-export interface ComputeInstance {
-  id: string;
-  name: string;
-  image: string;
-  cpu: number;
-  memory_mb: number;
-  container_id: string | null;
-  state: 'pending' | 'running' | 'stopping' | 'stopped' | 'terminated';
-  created_at: string;
-  updated_at: string;
-}
-
-export interface CreateInstanceRequest {
+export const createInstance = async (data: {
   name: string;
   image: string;
   cpu?: number;
-  memory?: number;
-}
+  memory_mb?: number;
+}): Promise<Instance> => {
+  const response = await fetch(`${API_BASE_URL}/compute/instances`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(data),
+  });
 
-export interface ListInstancesResponse {
-  count: number;
-  instances: ComputeInstance[];
-}
-
-// ============================================================================
-// API Functions
-// ============================================================================
-
-export async function listInstances(
-  instanceIds?: string[],
-  states?: string[]
-): Promise<ComputeInstance[]> {
-  const params = new URLSearchParams();
-  if (instanceIds && instanceIds.length > 0) {
-    params.append('instance_ids', instanceIds.join(','));
-  }
-  if (states && states.length > 0) {
-    params.append('states', states.join(','));
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({ message: 'Failed to create instance' }));
+    throw new Error(error.message || 'Failed to create instance');
   }
 
-  const response = await apiClient.get<ListInstancesResponse>(
-    `/compute/instances?${params.toString()}`
-  );
-  return response.data.instances || [];
-}
+  return response.json();
+};
 
-export async function getInstance(instanceId: string): Promise<ComputeInstance> {
-  const response = await apiClient.get<ComputeInstance>(`/compute/instances/${instanceId}`);
-  return response.data;
-}
-
-export async function createInstance(request: CreateInstanceRequest): Promise<ComputeInstance> {
-  const response = await apiClient.post<ComputeInstance>('/compute/instances', request);
-  return response.data;
-}
-
-export async function stopInstance(instanceId: string): Promise<void> {
-  await apiClient.post(`/compute/instances/${instanceId}/stop`);
-}
-
-export async function startInstance(instanceId: string): Promise<void> {
-  await apiClient.post(`/compute/instances/${instanceId}/start`);
-}
-
-export async function terminateInstance(instanceId: string): Promise<void> {
-  await apiClient.post(`/compute/instances/${instanceId}/terminate`);
-}
-
-// ============================================================================
-// Helper Functions
-// ============================================================================
-
-export function getStateColor(state: ComputeInstance['state']): string {
-  switch (state) {
-    case 'running':
-      return 'text-green-600 bg-green-50';
-    case 'stopped':
-      return 'text-gray-600 bg-gray-50';
-    case 'pending':
-      return 'text-yellow-600 bg-yellow-50';
-    case 'stopping':
-      return 'text-orange-600 bg-orange-50';
-    case 'terminated':
-      return 'text-red-600 bg-red-50';
-    default:
-      return 'text-gray-600 bg-gray-50';
+export const getInstances = async (): Promise<Instance[]> => {
+  const response = await fetch(`${API_BASE_URL}/compute/instances`);
+  if (!response.ok) {
+    throw new Error('Failed to fetch instances');
   }
-}
+  const data = await response.json();
+  console.log('API Response:', data);
+  console.log('Instances count:', data.count);
+  console.log('Instances array length:', data.instances?.length);
+  return data.instances || [];
+};
 
-export function getStateIcon(state: ComputeInstance['state']): string {
-  switch (state) {
-    case 'running':
-      return '●';
-    case 'stopped':
-      return '■';
-    case 'pending':
-      return '◐';
-    case 'stopping':
-      return '◑';
-    case 'terminated':
-      return '✕';
-    default:
-      return '○';
+export const startInstance = async (instanceId: string): Promise<any> => {
+  const response = await fetch(`${API_BASE_URL}/compute/instances/${instanceId}/start`, {
+    method: 'POST',
+  });
+  if (!response.ok) {
+    throw new Error('Failed to start instance');
   }
-}
+  return response.json();
+};
+
+export const stopInstance = async (instanceId: string): Promise<any> => {
+  const response = await fetch(`${API_BASE_URL}/compute/instances/${instanceId}/stop`, {
+    method: 'POST',
+  });
+  if (!response.ok) {
+    throw new Error('Failed to stop instance');
+  }
+  return response.json();
+};
+
+export const terminateInstance = async (instanceId: string): Promise<any> => {
+  const response = await fetch(`${API_BASE_URL}/compute/instances/${instanceId}/terminate`, {
+    method: 'POST',
+  });
+  if (!response.ok) {
+    throw new Error('Failed to terminate instance');
+  }
+  return response.json();
+};

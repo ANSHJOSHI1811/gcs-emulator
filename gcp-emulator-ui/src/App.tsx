@@ -13,7 +13,7 @@ import EventsPage from './pages/EventsPage';
 import SettingsPage from './pages/SettingsPage';
 import ServiceAccountsPage from './pages/ServiceAccountsPage';
 import RolesPage from './pages/RolesPage';
-import ComputeInstancesPage from './pages/ComputeInstancesPage';
+import ComputePage from './pages/ComputePage';
 
 function App() {
   return (
@@ -46,7 +46,7 @@ function App() {
             {/* Compute Engine Routes */}
             <Route path="/services/compute">
               <Route index element={<Navigate to="/services/compute/instances" replace />} />
-              <Route path="instances" element={<ComputeInstancesPage />} />
+              <Route path="instances" element={<ComputePage />} />
             </Route>
 
             {/* Legacy Routes - Redirect to new structure */}
