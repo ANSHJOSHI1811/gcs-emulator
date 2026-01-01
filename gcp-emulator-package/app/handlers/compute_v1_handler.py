@@ -7,6 +7,7 @@ from datetime import datetime
 import logging
 import uuid
 import re
+import json
 
 from app.models.instance import Instance
 from app.models.compute_operation import ComputeOperation
@@ -176,6 +177,27 @@ class ComputeV1Handler:
                 elif 'alpine' in source_image.lower():
                     image = 'alpine:latest'
             
+            # Phase 2: Extract metadata and labels
+            metadata_obj = data.get('metadata', {})
+            labels_obj = data.get('labels', {})
+            description = data.get('description', '')
+            
+            # Convert metadata items array to dict
+            metadata_dict = {}
+            if isinstance(metadata_obj, dict):
+                metadata_items = metadata_obj.get('items', [])
+                for item in metadata_items:
+                    if isinstance(item, dict) and 'key' in item and 'value' in item:
+                        metadata_dict[item['key']] = item['value']
+            
+            # Validate labels format (lowercase alphanumeric, hyphens, underscores)
+            if labels_obj and isinstance(labels_obj, dict):
+                for key, value in labels_obj.items():
+                    if not re.match(r'^[a-z0-9_-]+$', key):
+                        return gcp_error_response(400, f"Invalid label key: {key}")
+                    if not re.match(r'^[a-z0-9_-]+$', str(value)):
+                        return gcp_error_response(400, f"Invalid label value: {value}")
+            
             # Create instance using existing service
             instance = self.compute_service.run_instance(
                 name=name,
@@ -188,9 +210,12 @@ class ComputeV1Handler:
             if not instance:
                 return gcp_error_response(500, "Failed to create instance")
             
-            # Update instance with zone and machine_type
+            # Update instance with zone, machine_type, metadata_items, labels, description
             instance.zone = zone
             instance.machine_type = machine_type
+            instance.metadata_items = json.dumps(metadata_dict)
+            instance.labels = json.dumps(labels_obj) if labels_obj else '{}'
+            instance.description = description if description else None
             db.session.commit()
             
             # Create operation

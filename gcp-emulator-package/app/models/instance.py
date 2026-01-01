@@ -5,6 +5,7 @@ Represents a virtual machine instance backed by Docker containers
 from datetime import datetime
 from app.factory import db
 import uuid
+import json
 
 
 class Instance(db.Model):
@@ -22,6 +23,11 @@ class Instance(db.Model):
     # GCP Compute API v1 fields
     zone = db.Column(db.String(100), default='us-central1-a')
     machine_type = db.Column(db.String(100), default='e2-micro')  # Machine type name (not full URL)
+    
+    # Phase 2: Metadata and Labels support
+    metadata_items = db.Column(db.Text, default='{}')  # JSON string of key-value pairs (renamed from 'metadata' - SQLAlchemy reserved)
+    labels = db.Column(db.Text, default='{}')  # JSON string of key-value pairs
+    description = db.Column(db.Text, nullable=True)  # Optional description
     
     # Instance configuration
     image = db.Column(db.String(500), nullable=False)  # Docker image name
@@ -81,12 +87,38 @@ class Instance(db.Model):
         # RFC 3339 timestamp
         creation_timestamp = self.created_at.strftime('%Y-%m-%dT%H:%M:%S.%f')[:-3] + 'Z'
         
+        # Parse metadata from JSON string
+        try:
+            metadata_dict = json.loads(self.metadata_items or '{}')
+        except (json.JSONDecodeError, TypeError):
+            metadata_dict = {}
+        
+        # Build metadata items array (GCP format)
+        metadata_items = []
+        # Add emulator defaults
+        metadata_items.append({"key": "emulator", "value": "true"})
+        metadata_items.append({"key": "docker_image", "value": self.image})
+        metadata_items.append({"key": "cpu_count", "value": str(self.cpu)})
+        metadata_items.append({"key": "memory_mb", "value": str(self.memory_mb)})
+        # Add user-defined metadata
+        for key, value in metadata_dict.items():
+            metadata_items.append({"key": key, "value": str(value)})
+        
+        # Parse labels from JSON string
+        try:
+            labels_dict = json.loads(self.labels or '{}')
+        except (json.JSONDecodeError, TypeError):
+            labels_dict = {}
+        
+        # Determine description
+        instance_description = self.description or f"Emulated instance backed by Docker ({self.image})"
+        
         return {
             "kind": "compute#instance",
             "id": numeric_id,
             "creationTimestamp": creation_timestamp,
             "name": self.name,
-            "description": f"Emulated instance backed by Docker ({self.image})",
+            "description": instance_description,
             "tags": {
                 "items": [],
                 "fingerprint": "42WmSpB8rSM="
@@ -137,25 +169,10 @@ class Instance(db.Model):
             "metadata": {
                 "kind": "compute#metadata",
                 "fingerprint": "example123",
-                "items": [
-                    {
-                        "key": "emulator",
-                        "value": "true"
-                    },
-                    {
-                        "key": "docker_image",
-                        "value": self.image
-                    },
-                    {
-                        "key": "cpu_count",
-                        "value": str(self.cpu)
-                    },
-                    {
-                        "key": "memory_mb",
-                        "value": str(self.memory_mb)
-                    }
-                ]
+                "items": metadata_items
             },
+            "labels": labels_dict,
+            "labelFingerprint": "42WmSpB8rSM=",
             "serviceAccounts": [
                 {
                     "email": f"{self.project_id}-compute@developer.gserviceaccount.com",
@@ -176,7 +193,6 @@ class Instance(db.Model):
                 "preemptible": False
             },
             "cpuPlatform": "Intel Broadwell",
-            "labelFingerprint": "42WmSpB8rSM=",
             "startRestricted": False,
             "deletionProtection": False,
             "fingerprint": "example-fingerprint"
