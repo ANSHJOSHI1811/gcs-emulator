@@ -50,4 +50,11 @@ def create_compute_blueprint(compute_service) -> Blueprint:
         methods=['POST']
     )
     
+    # GET /compute/docker-images - List available Docker images
+    compute_bp.add_url_rule(
+        '/docker-images',
+        view_func=handler.list_docker_images,
+        methods=['GET']
+    )
+    
     return compute_bp

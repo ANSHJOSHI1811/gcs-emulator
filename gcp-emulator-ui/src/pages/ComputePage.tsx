@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { getInstances, createInstance } from '../api/compute';
+import { getInstances, createInstance, getDockerImages } from '../api/compute';
 import { Instance } from '../types/compute';
 import StatsBar from '../components/compute/StatsBar';
 import InstanceTable from '../components/compute/InstanceTable';
@@ -11,6 +11,8 @@ const ComputePage: React.FC = () => {
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [createLoading, setCreateLoading] = useState(false);
   const [createError, setCreateError] = useState<string | null>(null);
+  const [dockerImages, setDockerImages] = useState<Array<{name: string; id: string; size: string}>>([]);
+  const [loadingImages, setLoadingImages] = useState(false);
   const [formData, setFormData] = useState({
     name: '',
     image: 'alpine:latest',
@@ -35,6 +37,21 @@ const ComputePage: React.FC = () => {
     const interval = setInterval(fetchInstances, 5000); // Poll every 5 seconds
     return () => clearInterval(interval);
   }, [fetchInstances]);
+
+  const fetchDockerImages = useCallback(async () => {
+    try {
+      setLoadingImages(true);
+      const images = await getDockerImages();
+      setDockerImages(images);
+      if (images.length > 0 && !formData.image) {
+        setFormData(prev => ({ ...prev, image: images[0].name }));
+      }
+    } catch (err: any) {
+      console.error('Failed to fetch Docker images:', err);
+    } finally {
+      setLoadingImages(false);
+    }
+  }, [formData.image]);
 
   const handleCreateInstance = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -76,7 +93,12 @@ const ComputePage: React.FC = () => {
       <div className="flex justify-between items-center mb-6">
         <h1 className="text-3xl font-bold text-gray-900">Compute Engine Instances</h1>
         <button
-          onClick={() => setShowCreateModal(true)}
+          onClick={() => {
+            setShowCreateModal(true);
+            if (dockerImages.length === 0) {
+              fetchDockerImages();
+            }
+          }}
           className="px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-md hover:bg-blue-700 transition-colors"
         >
           Create Instance
@@ -112,14 +134,36 @@ const ComputePage: React.FC = () => {
                 <label className="block text-sm font-medium text-gray-700 mb-1">
                   Docker Image *
                 </label>
-                <input
-                  type="text"
-                  value={formData.image}
-                  onChange={(e) => setFormData({ ...formData, image: e.target.value })}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  placeholder="alpine:latest"
-                  required
-                />
+                {loadingImages ? (
+                  <div className="w-full px-3 py-2 border border-gray-300 rounded-md bg-gray-50 text-gray-500">
+                    Loading images...
+                  </div>
+                ) : dockerImages.length > 0 ? (
+                  <select
+                    value={formData.image}
+                    onChange={(e) => setFormData({ ...formData, image: e.target.value })}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    required
+                  >
+                    {dockerImages.map((img) => (
+                      <option key={img.id} value={img.name}>
+                        {img.name} ({img.size})
+                      </option>
+                    ))}
+                  </select>
+                ) : (
+                  <input
+                    type="text"
+                    value={formData.image}
+                    onChange={(e) => setFormData({ ...formData, image: e.target.value })}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    placeholder="alpine:latest"
+                    required
+                  />
+                )}
+                <p className="text-xs text-gray-500 mt-1">
+                  {dockerImages.length > 0 ? `${dockerImages.length} images available` : 'Type image name manually'}
+                </p>
               </div>
 
               <div>

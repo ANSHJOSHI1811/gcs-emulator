@@ -144,3 +144,15 @@ class ComputeHandler:
         except Exception as e:
             logger.error(f"Error in terminate_instance: {e}", exc_info=True)
             return jsonify({'error': 'Internal server error'}), 500
+    
+    def list_docker_images(self):
+        """Handle GET /compute/docker-images - List available Docker images"""
+        try:
+            images = self.compute_service.docker_driver.list_images()
+            return jsonify({
+                'count': len(images),
+                'images': images
+            }), 200
+        except Exception as e:
+            logger.error(f"Error in list_docker_images: {e}", exc_info=True)
+            return jsonify({'error': 'Internal server error'}), 500

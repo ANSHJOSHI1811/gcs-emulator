@@ -308,3 +308,40 @@ class DockerDriver:
         except APIError as e:
             logger.error(f"Failed to cleanup orphaned containers: {e}")
             return 0
+    
+    def list_images(self) -> List[Dict[str, str]]:
+        """
+        List available Docker images
+        
+        Returns:
+            List of dicts with image info (name, tags, size)
+        """
+        client = self._get_client()
+        
+        try:
+            images = []
+            for image in client.images.list():
+                # Skip images without tags
+                if not image.tags:
+                    continue
+                
+                for tag in image.tags:
+                    images.append({
+                        'name': tag,
+                        'id': image.short_id.replace('sha256:', ''),
+                        'size': self._format_size(image.attrs.get('Size', 0))
+                    })
+            
+            logger.info(f"Found {len(images)} Docker images")
+            return images
+        except APIError as e:
+            logger.error(f"Failed to list images: {e}")
+            return []
+    
+    def _format_size(self, size_bytes: int) -> str:
+        """Format size in bytes to human readable"""
+        for unit in ['B', 'KB', 'MB', 'GB']:
+            if size_bytes < 1024.0:
+                return f"{size_bytes:.1f} {unit}"
+            size_bytes /= 1024.0
+        return f"{size_bytes:.1f} TB"

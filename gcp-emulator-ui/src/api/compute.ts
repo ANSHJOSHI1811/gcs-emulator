@@ -65,3 +65,12 @@ export const terminateInstance = async (instanceId: string): Promise<any> => {
   }
   return response.json();
 };
+
+export const getDockerImages = async (): Promise<Array<{name: string; id: string; size: string}>> => {
+  const response = await fetch(`${API_BASE_URL}/compute/docker-images`);
+  if (!response.ok) {
+    throw new Error('Failed to fetch Docker images');
+  }
+  const data = await response.json();
+  return data.images || [];
+};
