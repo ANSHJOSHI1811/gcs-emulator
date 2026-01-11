@@ -1,0 +1,149 @@
+"""
+Compute Engine models - Instances, Zones, Machine Types
+"""
+from datetime import datetime
+from sqlalchemy.dialects.postgresql import JSON
+from app.factory import db
+
+
+class Zone(db.Model):
+    """Zone model - GCP zones"""
+    __tablename__ = "zones"
+    
+    id = db.Column(db.String(100), primary_key=True)  # us-central1-a
+    name = db.Column(db.String(100), unique=True, nullable=False)
+    region = db.Column(db.String(100), nullable=False)  # us-central1
+    status = db.Column(db.String(50), default="UP")
+    description = db.Column(db.Text)
+    
+    def __repr__(self) -> str:
+        return f"<Zone {self.name}>"
+    
+    def to_dict(self) -> dict:
+        """Convert to GCP API format"""
+        return {
+            "id": self.id,
+            "name": self.name,
+            "region": self.region,
+            "status": self.status,
+            "description": self.description,
+        }
+
+
+class MachineType(db.Model):
+    """Machine Type model"""
+    __tablename__ = "machine_types"
+    
+    id = db.Column(db.String(100), primary_key=True)
+    name = db.Column(db.String(100), nullable=False)
+    zone = db.Column(db.String(100), db.ForeignKey("zones.id"), nullable=False)
+    guest_cpus = db.Column(db.Integer, default=1)
+    memory_mb = db.Column(db.Integer, default=1024)
+    description = db.Column(db.Text)
+    is_shared_cpu = db.Column(db.Boolean, default=False)
+    
+    def __repr__(self) -> str:
+        return f"<MachineType {self.name}>"
+    
+    def to_dict(self) -> dict:
+        """Convert to GCP API format"""
+        return {
+            "id": self.id,
+            "name": self.name,
+            "zone": self.zone,
+            "guestCpus": self.guest_cpus,
+            "memoryMb": self.memory_mb,
+            "description": self.description,
+            "isSharedCpu": self.is_shared_cpu,
+        }
+
+
+class Instance(db.Model):
+    """Compute Instance model"""
+    __tablename__ = "instances"
+    
+    id = db.Column(db.String(255), primary_key=True)  # Unique ID
+    project_id = db.Column(db.String(63), db.ForeignKey("projects.id"), nullable=False)
+    name = db.Column(db.String(255), nullable=False)
+    zone = db.Column(db.String(100), db.ForeignKey("zones.id"), nullable=False)
+    machine_type = db.Column(db.String(100), nullable=False)
+    status = db.Column(db.String(50), default="PROVISIONING")  # PROVISIONING, RUNNING, STOPPING, STOPPED, TERMINATED
+    
+    # Container/Docker info
+    container_id = db.Column(db.String(255))  # Docker container ID
+    container_name = db.Column(db.String(255))  # Docker container name
+    
+    # Network
+    internal_ip = db.Column(db.String(15))
+    external_ip = db.Column(db.String(15))
+    
+    # Image and disk
+    source_image = db.Column(db.String(255))
+    disk_size_gb = db.Column(db.Integer, default=10)
+    
+    # Metadata
+    instance_metadata = db.Column(JSON, default=dict)
+    labels = db.Column(JSON, default=dict)
+    tags = db.Column(JSON, default=list)
+    
+    # Timestamps
+    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    
+    # Service account (for the instance)
+    service_account_email = db.Column(db.String(255))
+    service_account_scopes = db.Column(JSON, default=list)
+    
+    __table_args__ = (
+        db.UniqueConstraint('project_id', 'zone', 'name', name='uix_instance_name'),
+    )
+    
+    def __repr__(self) -> str:
+        return f"<Instance {self.name}>"
+    
+    def to_dict(self) -> dict:
+        """Convert to GCP API format"""
+        result = {
+            "id": self.id,
+            "name": self.name,
+            "zone": self.zone,
+            "machineType": self.machine_type,
+            "status": self.status,
+            "creationTimestamp": self.created_at.isoformat() + "Z",
+        }
+        
+        if self.internal_ip or self.external_ip:
+            result["networkInterfaces"] = [{
+                "networkIP": self.internal_ip,
+                "accessConfigs": [{"natIP": self.external_ip}] if self.external_ip else []
+            }]
+        
+        if self.source_image:
+            result["disks"] = [{
+                "boot": True,
+                "source": self.source_image,
+                "diskSizeGb": str(self.disk_size_gb),
+            }]
+        
+        if self.instance_metadata:
+            result["metadata"] = self.instance_metadata
+        
+        if self.labels:
+            result["labels"] = self.labels
+        
+        if self.tags:
+            result["tags"] = {"items": self.tags}
+        
+        if self.service_account_email:
+            result["serviceAccounts"] = [{
+                "email": self.service_account_email,
+                "scopes": self.service_account_scopes or []
+            }]
+        
+        # Emulator-specific fields
+        result["_emulator"] = {
+            "containerId": self.container_id,
+            "containerName": self.container_name,
+        }
+        
+        return result

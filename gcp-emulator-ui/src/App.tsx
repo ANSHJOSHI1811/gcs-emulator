@@ -8,7 +8,7 @@ import StorageDashboardPage from './pages/StorageDashboardPage';
 import BucketListPage from './pages/BucketListPage';
 import BucketDetails from './pages/BucketDetails';
 import ObjectDetailsPage from './pages/ObjectDetailsPage';
-import ActivityPage from './pages/ActivityPage';
+// import ActivityPage from './pages/ActivityPage';
 import EventsPage from './pages/EventsPage';
 import SettingsPage from './pages/SettingsPage';
 

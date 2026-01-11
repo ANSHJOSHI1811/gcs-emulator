@@ -93,6 +93,9 @@ def register_blueprints(app: Flask) -> None:
     from app.handlers.cors_handler import cors_bp
     from app.handlers.notification_handler import notifications_bp
     from app.handlers.lifecycle_config_handler import lifecycle_config_bp
+    from app.handlers.auth_handler import auth_bp
+    from app.handlers.iam_handler import iam_bp
+    from app.handlers.compute_handler import compute_bp
     
     app.register_blueprint(health_bp)
     app.register_blueprint(buckets_bp, url_prefix="/storage/v1/b")
@@ -108,6 +111,11 @@ def register_blueprints(app: Flask) -> None:
     app.register_blueprint(cors_bp, url_prefix="/storage/v1")  # CORS configuration
     app.register_blueprint(notifications_bp, url_prefix="/storage/v1")  # Notification webhooks
     app.register_blueprint(lifecycle_config_bp, url_prefix="/storage/v1")  # Lifecycle configuration
+    
+    # New: IAM and Compute Engine
+    app.register_blueprint(auth_bp)  # OAuth2 mock endpoints
+    app.register_blueprint(iam_bp)  # IAM service accounts and policies
+    app.register_blueprint(compute_bp)  # Compute Engine instances
     
     # Register SDK compatibility middleware
     register_sdk_middleware(app)

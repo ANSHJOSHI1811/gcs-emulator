@@ -13,11 +13,13 @@ from app.utils.gcs_errors import (
     invalid_argument_error, 
     internal_error
 )
+from app.utils.iam_enforcer import require_permission
 
 objects_bp = Blueprint("objects", __name__)
 
 
 @objects_bp.route("/<bucket>/o", methods=["GET"])
+@require_permission('bucket', 'storage.objects.list', 'bucket')
 def list_objects(bucket):
     """
     List objects in a bucket
@@ -71,6 +73,7 @@ def list_objects(bucket):
 
 
 @objects_bp.route("/<bucket>/o", methods=["POST"])
+@require_permission('bucket', 'storage.objects.create', 'bucket')
 def upload_object(bucket):
     """
     Upload an object with versioning support
@@ -130,6 +133,7 @@ def upload_object(bucket):
 
 
 @objects_bp.route("/<bucket>/o/<path:object_name>", methods=["GET"])
+@require_permission('bucket', 'storage.objects.get', 'bucket')
 def get_object(bucket, object_name):
     """
     Get object metadata or download with versioning support
@@ -172,6 +176,7 @@ def get_object(bucket, object_name):
 
 
 @objects_bp.route("/<bucket>/o/<path:object_name>", methods=["DELETE"])
+@require_permission('bucket', 'storage.objects.delete', 'bucket')
 def delete_object(bucket, object_name):
     """
     Delete an object or specific version
@@ -209,6 +214,8 @@ def delete_object(bucket, object_name):
 
 
 @objects_bp.route("/<src_bucket>/o/<path:src_object>/copyTo/b/<dst_bucket>/o/<path:dst_object>", methods=["POST"])
+@require_permission('bucket', 'storage.objects.get', 'src_bucket')
+@require_permission('bucket', 'storage.objects.create', 'dst_bucket')
 def copy_object(src_bucket, src_object, dst_bucket, dst_object):
     """
     Copy an object from source to destination
