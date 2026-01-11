@@ -26,19 +26,19 @@ class ComputeHandler:
                 return jsonify({'error': 'Missing required fields: name, image'}), 400
             
             cpu = data.get('cpu', 1)
-            memory = data.get('memory', 512)
+            memory_mb = data.get('memory_mb') or data.get('memory', 512)  # Support both field names
             
             if not isinstance(cpu, int) or cpu < 1 or cpu > 8:
                 return jsonify({'error': 'cpu must be an integer between 1 and 8'}), 400
             
-            if not isinstance(memory, int) or memory < 128 or memory > 8192:
+            if not isinstance(memory_mb, int) or memory_mb < 128 or memory_mb > 8192:
                 return jsonify({'error': 'memory must be an integer between 128 and 8192 MB'}), 400
             
             instance = self.compute_service.run_instance(
                 name=name,
                 image=image,
                 cpu=cpu,
-                memory=memory
+                memory=memory_mb
             )
             
             if not instance:
@@ -110,6 +110,24 @@ class ComputeHandler:
             logger.error(f"Error in stop_instance: {e}", exc_info=True)
             return jsonify({'error': 'Internal server error'}), 500
     
+    def start_instance(self, instance_id):
+        """Handle POST /compute/instances/<instance_id>/start - Start/resume instance"""
+        try:
+            success = self.compute_service.start_instance(instance_id)
+            
+            if success:
+                instance = self.compute_service.get_instance(instance_id)
+                return jsonify({
+                    'message': 'Instance started successfully',
+                    'instance': instance.to_dict() if instance else None
+                }), 200
+            else:
+                return jsonify({'error': 'Failed to start instance'}), 400
+            
+        except Exception as e:
+            logger.error(f"Error in start_instance: {e}", exc_info=True)
+            return jsonify({'error': 'Internal server error'}), 500
+    
     def terminate_instance(self, instance_id):
         """Handle POST /compute/instances/<instance_id>/terminate - Terminate instance"""
         try:
@@ -125,4 +143,16 @@ class ComputeHandler:
             
         except Exception as e:
             logger.error(f"Error in terminate_instance: {e}", exc_info=True)
+            return jsonify({'error': 'Internal server error'}), 500
+    
+    def list_docker_images(self):
+        """Handle GET /compute/docker-images - List available Docker images"""
+        try:
+            images = self.compute_service.docker_driver.list_images()
+            return jsonify({
+                'count': len(images),
+                'images': images
+            }), 200
+        except Exception as e:
+            logger.error(f"Error in list_docker_images: {e}", exc_info=True)
             return jsonify({'error': 'Internal server error'}), 500

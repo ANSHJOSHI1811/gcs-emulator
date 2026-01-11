@@ -7,6 +7,7 @@ Write-Host ""
 # Remove environment variables
 Remove-Item Env:\CLOUDSDK_API_ENDPOINT_OVERRIDES_STORAGE -ErrorAction SilentlyContinue
 Remove-Item Env:\CLOUDSDK_API_ENDPOINT_OVERRIDES_IAM -ErrorAction SilentlyContinue
+Remove-Item Env:\CLOUDSDK_API_ENDPOINT_OVERRIDES_COMPUTE -ErrorAction SilentlyContinue
 Remove-Item Env:\CLOUDSDK_AUTH_ACCESS_TOKEN -ErrorAction SilentlyContinue
 Remove-Item Env:\CLOUDSDK_CORE_PROJECT -ErrorAction SilentlyContinue
 Remove-Item Env:\CLOUDSDK_AUTH_DISABLE_CREDENTIALS -ErrorAction SilentlyContinue

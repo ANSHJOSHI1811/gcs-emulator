@@ -13,6 +13,7 @@ import EventsPage from './pages/EventsPage';
 import SettingsPage from './pages/SettingsPage';
 import ServiceAccountsPage from './pages/ServiceAccountsPage';
 import RolesPage from './pages/RolesPage';
+import ComputePage from './pages/ComputePage';
 
 function App() {
   return (
@@ -40,6 +41,12 @@ function App() {
               <Route index element={<Navigate to="/services/iam/service-accounts" replace />} />
               <Route path="service-accounts" element={<ServiceAccountsPage />} />
               <Route path="roles" element={<RolesPage />} />
+            </Route>
+
+            {/* Compute Engine Routes */}
+            <Route path="/services/compute">
+              <Route index element={<Navigate to="/services/compute/instances" replace />} />
+              <Route path="instances" element={<ComputePage />} />
             </Route>
 
             {/* Legacy Routes - Redirect to new structure */}

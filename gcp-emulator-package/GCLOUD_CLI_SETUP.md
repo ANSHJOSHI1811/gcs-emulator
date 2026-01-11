@@ -9,6 +9,21 @@ This guide shows you how to configure the **official Google Cloud SDK (`gcloud` 
 
 ## ⚙️ Configuration
 
+### Quick Setup Scripts (Windows)
+
+Prefer using the ready-made scripts to toggle emulator mode:
+
+- Enable: [gcp-emulator-package/setup-gcloud-emulator.ps1](gcp-emulator-package/setup-gcloud-emulator.ps1)
+- Disable: [gcp-emulator-package/disable-gcloud-emulator.ps1](gcp-emulator-package/disable-gcloud-emulator.ps1)
+
+Run in PowerShell:
+
+```powershell
+./setup-gcloud-emulator.ps1
+# ... use gcloud commands against the emulator ...
+./disable-gcloud-emulator.ps1
+```
+
 ### Windows PowerShell Setup
 
 Set these environment variables to redirect `gcloud` commands to your local emulator:
@@ -49,6 +64,22 @@ export CLOUDSDK_AUTH_DISABLE_CREDENTIALS=True
 
 # Set test project
 export CLOUDSDK_CORE_PROJECT="test-project"
+```
+
+### gsutil Setup (optional)
+
+Point `gsutil` to the emulator using the provided boto config and environment variable:
+
+```powershell
+$env:BOTO_CONFIG = "$PWD/gcp-emulator-package/docs/gsutil-emulator.boto"
+gsutil ls
+```
+
+Or on bash/WSL:
+
+```bash
+export BOTO_CONFIG="$(pwd)/gcp-emulator-package/docs/gsutil-emulator.boto"
+gsutil ls
 ```
 
 ## 🧪 Testing GCS Commands

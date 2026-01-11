@@ -36,11 +36,25 @@ def create_compute_blueprint(compute_service) -> Blueprint:
         methods=['POST']
     )
     
+    # POST /compute/instances/<instance_id>/start - Start instance
+    compute_bp.add_url_rule(
+        '/instances/<instance_id>/start',
+        view_func=handler.start_instance,
+        methods=['POST']
+    )
+    
     # POST /compute/instances/<instance_id>/terminate - Terminate instance
     compute_bp.add_url_rule(
         '/instances/<instance_id>/terminate',
         view_func=handler.terminate_instance,
         methods=['POST']
+    )
+    
+    # GET /compute/docker-images - List available Docker images
+    compute_bp.add_url_rule(
+        '/docker-images',
+        view_func=handler.list_docker_images,
+        methods=['GET']
     )
     
     return compute_bp
