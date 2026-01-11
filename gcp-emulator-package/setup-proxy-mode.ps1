@@ -102,6 +102,7 @@ Write-Host "Step 5: Configuring gcloud CLI..." -ForegroundColor Yellow
 
 $env:CLOUDSDK_API_ENDPOINT_OVERRIDES_STORAGE = "http://127.0.0.1:8080/"
 $env:CLOUDSDK_API_ENDPOINT_OVERRIDES_IAM = "http://127.0.0.1:8080/"
+$env:CLOUDSDK_API_ENDPOINT_OVERRIDES_COMPUTE = "http://127.0.0.1:8080/"
 $env:CLOUDSDK_CORE_PROJECT = $env:GCP_PROJECT_ID
 
 Write-Host "✓ gcloud CLI configured to use emulator" -ForegroundColor Green
@@ -147,4 +148,5 @@ if ($env:GCP_LOCAL_APIS) {
 }
 Write-Host "  `$env:CLOUDSDK_API_ENDPOINT_OVERRIDES_STORAGE = `"http://127.0.0.1:8080/`"" -ForegroundColor Cyan
 Write-Host "  `$env:CLOUDSDK_API_ENDPOINT_OVERRIDES_IAM = `"http://127.0.0.1:8080/`"" -ForegroundColor Cyan
+Write-Host "  `$env:CLOUDSDK_API_ENDPOINT_OVERRIDES_COMPUTE = `"http://127.0.0.1:8080/`"" -ForegroundColor Cyan
 Write-Host ""

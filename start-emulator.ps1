@@ -15,23 +15,23 @@ Write-Host ""
 Write-Host "Checking WSL Ubuntu-24.04..." -ForegroundColor Yellow
 $wslCheck = wsl -d Ubuntu-24.04 echo "OK" 2>&1
 if ($LASTEXITCODE -ne 0) {
-    Write-Host "✗ WSL Ubuntu-24.04 not found or not started" -ForegroundColor Red
+    Write-Host "X WSL Ubuntu-24.04 not found or not started" -ForegroundColor Red
     Write-Host "  Starting WSL..." -ForegroundColor Yellow
     wsl -d Ubuntu-24.04 echo "Starting..."
 }
-Write-Host "✓ WSL is ready" -ForegroundColor Green
+Write-Host "WSL is ready" -ForegroundColor Green
 Write-Host ""
 
 # Check Docker
 Write-Host "Checking Docker..." -ForegroundColor Yellow
 $dockerCheck = wsl -d Ubuntu-24.04 docker ps 2>&1
 if ($LASTEXITCODE -ne 0) {
-    Write-Host "✗ Docker is not running" -ForegroundColor Red
+    Write-Host "X Docker is not running" -ForegroundColor Red
     Write-Host "  Starting Docker service..." -ForegroundColor Yellow
     wsl -d Ubuntu-24.04 sudo service docker start
     Start-Sleep -Seconds 3
 }
-Write-Host "✓ Docker is running" -ForegroundColor Green
+Write-Host "Docker is running" -ForegroundColor Green
 Write-Host ""
 
 # Start Backend
@@ -48,7 +48,7 @@ if (-not $FrontendOnly) {
     
     Start-Process powershell -ArgumentList "-NoExit", "-Command", $backendCommand
     
-    Write-Host "✓ Backend starting in new window..." -ForegroundColor Green
+    Write-Host "Backend starting in new window..." -ForegroundColor Green
     Write-Host "  Waiting for backend to be ready..." -ForegroundColor Yellow
     
     # Wait for backend to start
@@ -76,9 +76,9 @@ if (-not $FrontendOnly) {
     Write-Host ""
     
     if ($backendReady) {
-        Write-Host "✓ Backend is ready at http://localhost:8080" -ForegroundColor Green
+        Write-Host "Backend is ready at http://localhost:8080" -ForegroundColor Green
     } else {
-        Write-Host "⚠ Backend is starting but not responding yet" -ForegroundColor Yellow
+        Write-Host "Warning: Backend is starting but not responding yet" -ForegroundColor Yellow
         Write-Host "  Check the backend window for errors" -ForegroundColor Yellow
     }
     Write-Host ""
@@ -102,7 +102,7 @@ if (-not $BackendOnly) {
     # Start in new window
     Start-Process powershell -ArgumentList "-NoExit", "-Command", "cd '$PWD'; npm run dev"
     
-    Write-Host "✓ Frontend starting in new window..." -ForegroundColor Green
+    Write-Host "Frontend starting in new window..." -ForegroundColor Green
     Write-Host "  UI will be available at http://localhost:3000" -ForegroundColor Cyan
     Write-Host ""
     
@@ -114,22 +114,22 @@ Write-Host "=== Startup Complete ===" -ForegroundColor Cyan
 Write-Host ""
 Write-Host "Services:" -ForegroundColor Yellow
 if (-not $FrontendOnly) {
-    Write-Host "  • Backend API: http://localhost:8080" -ForegroundColor Green
+    Write-Host "  - Backend API: http://localhost:8080" -ForegroundColor Green
     Write-Host "    Health check: http://localhost:8080/health" -ForegroundColor Cyan
 }
 if (-not $BackendOnly) {
-    Write-Host "  • Frontend UI: http://localhost:3000" -ForegroundColor Green
+    Write-Host "  - Frontend UI: http://localhost:3000" -ForegroundColor Green
 }
 Write-Host ""
 Write-Host "Available Features:" -ForegroundColor Yellow
-Write-Host "  • Cloud Storage (Buckets & Objects)"
-Write-Host "  • IAM (Service Accounts, Roles, Policies)"
-Write-Host "  • Compute Engine (Docker-backed VMs)"
+Write-Host "  - Cloud Storage (Buckets and Objects)"
+Write-Host "  - IAM (Service Accounts, Roles, Policies)"
+Write-Host "  - Compute Engine (Docker-backed VMs)"
 Write-Host ""
 Write-Host "Quick Links:" -ForegroundColor Yellow
-Write-Host "  • Storage: http://localhost:3000/services/storage"
-Write-Host "  • IAM: http://localhost:3000/services/iam"
-Write-Host "  • Compute: http://localhost:3000/services/compute"
+Write-Host "  - Storage: http://localhost:3000/services/storage"
+Write-Host "  - IAM: http://localhost:3000/services/iam"
+Write-Host "  - Compute: http://localhost:3000/services/compute"
 Write-Host ""
 Write-Host "Press Ctrl+C in each window to stop services" -ForegroundColor Gray
 Write-Host ""

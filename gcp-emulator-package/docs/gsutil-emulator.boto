@@ -1,0 +1,5 @@
+[Credentials]
+gs_oauth2_refresh_token = fake
+
+[GSUtil]
+default_project_id = test-project

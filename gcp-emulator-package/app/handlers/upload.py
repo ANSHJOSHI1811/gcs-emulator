@@ -19,6 +19,9 @@ from app.utils.gcs_errors import (
     precondition_failed_error,
     internal_error
 )
+from app.logging import log_handler_stage
+from app.models.bucket import Bucket
+from app.models.object import Object
 
 upload_bp = Blueprint("upload", __name__)
 
@@ -176,12 +179,191 @@ def _upload_with_preconditions(bucket: str, object_name: str,
     
     Extracts precondition headers and calls the versioning service.
     """
-    # Extract precondition parameters from query string
-    if_generation_match = request.args.get("ifGenerationMatch", type=int)
-    if_generation_not_match = request.args.get("ifGenerationNotMatch", type=int)
-    if_metageneration_match = request.args.get("ifMetagenerationMatch", type=int)
-    if_metageneration_not_match = request.args.get("ifMetagenerationNotMatch", type=int)
+    # Extract preconditions from query and headers
+    try:
+        # Log raw query and relevant headers for debugging
+        relevant_headers = {}
+        for k in [
+            "If-Generation-Match",
+            "If-Generation-Not-Match",
+            "If-Metageneration-Match",
+            "If-Metageneration-Not-Match",
+            "x-goog-if-generation-match",
+            "x-goog-if-generation-not-match",
+            "x-goog-if-metageneration-match",
+            "x-goog-if-metageneration-not-match",
+        ]:
+            v = request.headers.get(k)
+            if v is not None:
+                relevant_headers[k] = v
+        log_handler_stage(
+            message="Upload preconditions raw",
+            details={
+                "bucket": bucket,
+                "object": object_name,
+                "query": dict(request.args),
+                "headers_present": relevant_headers,
+            }
+        )
+    except Exception:
+        pass
+    def _get_int_arg(name: str, header_name: str, alt_header_names: list = None):
+        val = request.args.get(name)
+        if val is None:
+            val = request.headers.get(header_name)
+        if val is None and alt_header_names:
+            for hn in alt_header_names:
+                v = request.headers.get(hn)
+                if v is not None:
+                    val = v
+                    break
+        try:
+            return int(val) if val is not None and str(val).strip() != '' else None
+        except (ValueError, TypeError):
+            return None
+
+    if_generation_match = _get_int_arg(
+        "ifGenerationMatch",
+        "If-Generation-Match",
+        ["x-goog-if-generation-match", "X-Goog-If-Generation-Match"]
+    )
+    if_generation_not_match = _get_int_arg(
+        "ifGenerationNotMatch",
+        "If-Generation-Not-Match",
+        ["x-goog-if-generation-not-match", "X-Goog-If-Generation-Not-Match"]
+    )
+    if_metageneration_match = _get_int_arg(
+        "ifMetagenerationMatch",
+        "If-Metageneration-Match",
+        ["x-goog-if-metageneration-match", "X-Goog-If-Metageneration-Match"]
+    )
+    if_metageneration_not_match = _get_int_arg(
+        "ifMetagenerationNotMatch",
+        "If-Metageneration-Not-Match",
+        ["x-goog-if-metageneration-not-match", "X-Goog-If-Metageneration-Not-Match"]
+    )
+
+    # Early enforcement to ensure 412s without relying solely on service layer
+    try:
+        from app.models.bucket import Bucket
+        from app.models.object import Object
+        bucket_obj = Bucket.query.filter_by(name=bucket).first()
+        existing_obj = None
+        if bucket_obj:
+            existing_obj = Object.query.filter_by(
+                bucket_id=bucket_obj.id,
+                name=object_name,
+                is_latest=True,
+                deleted=False
+            ).first()
+
+        try:
+            log_handler_stage(
+                message="Precondition enforcement state",
+                details={
+                    "bucket": bucket,
+                    "object": object_name,
+                    "exists": bool(existing_obj),
+                    "current_generation": (existing_obj.generation if existing_obj else None),
+                    "current_metageneration": (existing_obj.metageneration if existing_obj else None),
+                    "if_generation_match": if_generation_match,
+                    "if_generation_not_match": if_generation_not_match,
+                    "if_metageneration_match": if_metageneration_match,
+                    "if_metageneration_not_match": if_metageneration_not_match,
+                }
+            )
+        except Exception:
+            pass
+
+        # Object doesn't exist
+        if existing_obj is None:
+            if if_generation_match is not None and if_generation_match != 0:
+                return precondition_failed_error(
+                    f"Precondition failed: object does not exist (ifGenerationMatch={if_generation_match})"
+                )
+            if if_metageneration_match is not None:
+                return precondition_failed_error(
+                    f"Precondition failed: object does not exist (ifMetagenerationMatch={if_metageneration_match})"
+                )
+        else:
+            # Object exists
+            if if_generation_match is not None and existing_obj.generation != if_generation_match:
+                return precondition_failed_error(
+                    f"Precondition failed: generation {existing_obj.generation} != {if_generation_match}"
+                )
+            if if_generation_not_match is not None and existing_obj.generation == if_generation_not_match:
+                return precondition_failed_error(
+                    f"Precondition failed: generation {existing_obj.generation} == {if_generation_not_match}"
+                )
+            if if_metageneration_match is not None and existing_obj.metageneration != if_metageneration_match:
+                return precondition_failed_error(
+                    f"Precondition failed: metageneration {existing_obj.metageneration} != {if_metageneration_match}"
+                )
+            if if_metageneration_not_match is not None and existing_obj.metageneration == if_metageneration_not_match:
+                return precondition_failed_error(
+                    f"Precondition failed: metageneration {existing_obj.metageneration} == {if_metageneration_not_match}"
+                )
+    except Exception:
+        # If enforcement fails due to DB issues, fall back to service-level checks
+        pass
+
+    try:
+        log_handler_stage(
+            message="Upload preconditions parsed",
+            details={
+                "bucket": bucket,
+                "object": object_name,
+                "if_generation_match": if_generation_match,
+                "if_generation_not_match": if_generation_not_match,
+                "if_metageneration_match": if_metageneration_match,
+                "if_metageneration_not_match": if_metageneration_not_match,
+            }
+        )
+    except Exception:
+        pass
     
+    # Early guard: enforce 412s before delegating, to ensure CLI/harness behavior
+    try:
+        bucket_obj = Bucket.query.filter_by(name=bucket).first()
+        if not bucket_obj:
+            return not_found_error(bucket, "bucket")
+        existing_obj = Object.query.filter_by(
+            bucket_id=bucket_obj.id,
+            name=object_name,
+            is_latest=True,
+            deleted=False
+        ).first()
+
+        # Mirror service precondition logic
+        if existing_obj is None:
+            if if_generation_match is not None and if_generation_match != 0:
+                raise PreconditionFailedError(
+                    f"Precondition failed: object does not exist (ifGenerationMatch={if_generation_match})"
+                )
+            if if_metageneration_match is not None:
+                raise PreconditionFailedError(
+                    f"Precondition failed: object does not exist (ifMetagenerationMatch={if_metageneration_match})"
+                )
+        else:
+            if if_generation_match is not None and existing_obj.generation != if_generation_match:
+                raise PreconditionFailedError(
+                    f"Precondition failed: generation {existing_obj.generation} != {if_generation_match}"
+                )
+            if if_generation_not_match is not None and existing_obj.generation == if_generation_not_match:
+                raise PreconditionFailedError(
+                    f"Precondition failed: generation {existing_obj.generation} == {if_generation_not_match}"
+                )
+            if if_metageneration_match is not None and existing_obj.metageneration != if_metageneration_match:
+                raise PreconditionFailedError(
+                    f"Precondition failed: metageneration {existing_obj.metageneration} != {if_metageneration_match}"
+                )
+            if if_metageneration_not_match is not None and existing_obj.metageneration == if_metageneration_not_match:
+                raise PreconditionFailedError(
+                    f"Precondition failed: metageneration {existing_obj.metageneration} == {if_metageneration_not_match}"
+                )
+    except PreconditionFailedError as e:
+        return precondition_failed_error(str(e))
+
     # Upload object with versioning
     obj = ObjectVersioningService.upload_object_with_versioning(
         bucket_name=bucket,
@@ -193,6 +375,19 @@ def _upload_with_preconditions(bucket: str, object_name: str,
         if_metageneration_match=if_metageneration_match,
         if_metageneration_not_match=if_metageneration_not_match
     )
+
+    try:
+        log_handler_stage(
+            message="Upload completed",
+            details={
+                "bucket": bucket,
+                "object": object_name,
+                "new_generation": obj.generation,
+                "new_metageneration": obj.metageneration,
+            }
+        )
+    except Exception:
+        pass
     
     # Return GCS-compliant JSON response
     response_data = obj.to_dict()
