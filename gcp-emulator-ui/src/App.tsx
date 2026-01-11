@@ -11,6 +11,8 @@ import ObjectDetailsPage from './pages/ObjectDetailsPage';
 // import ActivityPage from './pages/ActivityPage';
 import EventsPage from './pages/EventsPage';
 import SettingsPage from './pages/SettingsPage';
+import IAMDashboardPage from './pages/IAMDashboardPage';
+import ComputeDashboardPage from './pages/ComputeDashboardPage';
 
 function App() {
   return (
@@ -31,6 +33,16 @@ function App() {
               <Route path="buckets/:bucketName/objects/:objectName" element={<ObjectDetailsPage />} />
               <Route path="activity" element={<EventsPage />} />
               <Route path="settings" element={<SettingsPage />} />
+            </Route>
+
+            {/* IAM Service Routes */}
+            <Route path="/services/iam">
+              <Route index element={<IAMDashboardPage />} />
+            </Route>
+
+            {/* Compute Engine Service Routes */}
+            <Route path="/services/compute-engine">
+              <Route index element={<ComputeDashboardPage />} />
             </Route>
 
             {/* Legacy Routes - Redirect to new structure */}
