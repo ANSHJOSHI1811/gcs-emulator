@@ -1,5 +1,5 @@
 import { useLocation, Link } from 'react-router-dom';
-import { ChevronRight, Home } from 'lucide-react';
+import { ChevronRight, Home, Cloud } from 'lucide-react';
 import ServicesMegaMenu from '../navigation/ServicesMegaMenu';
 import { getServiceById } from '../../config/serviceCatalog';
 
@@ -61,10 +61,10 @@ const CloudConsoleTopNav = () => {
       <div className="flex items-center gap-4">
         <Link to="/" className="flex items-center gap-2 mr-2">
           <div className="w-8 h-8 bg-blue-600 rounded flex items-center justify-center">
-            <span className="text-white font-bold text-sm">GCS</span>
+            <Cloud className="w-5 h-5 text-white" />
           </div>
           <span className="font-semibold text-gray-900 hidden sm:inline">
-            Emulator Console
+            Google Cloud Stimulator
           </span>
         </Link>
 
