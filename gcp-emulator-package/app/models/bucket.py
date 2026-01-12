@@ -56,10 +56,13 @@ class Bucket(db.Model):
         time_created_rfc3339 = self.created_at.strftime('%Y-%m-%dT%H:%M:%S.%f')[:-3] + 'Z'
         updated_rfc3339 = self.updated_at.strftime('%Y-%m-%dT%H:%M:%S.%f')[:-3] + 'Z'
         
+        # Generate numeric project number (hash of project_id to get consistent number)
+        project_number = abs(hash(self.project_id)) % (10**12)
+        
         result = {
             "id": self.name,  # GCS uses bucket name as ID in API responses
             "name": self.name,
-            "projectNumber": self.project_id,
+            "projectNumber": str(project_number),
             "location": self.location,
             "storageClass": self.storage_class,
             "versioning": {

@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Shield, Key, Users, Lock } from 'lucide-react';
+import { Shield, Key, Users, Lock, Plus, X } from 'lucide-react';
 import { apiClient } from '../api/client';
 
 interface ServiceAccount {
@@ -13,6 +13,13 @@ interface ServiceAccount {
 const IAMDashboardPage = () => {
   const [serviceAccounts, setServiceAccounts] = useState<ServiceAccount[]>([]);
   const [loading, setLoading] = useState(true);
+  const [showCreateModal, setShowCreateModal] = useState(false);
+  const [createLoading, setCreateLoading] = useState(false);
+  const [formData, setFormData] = useState({
+    accountId: '',
+    displayName: '',
+    description: ''
+  });
 
   useEffect(() => {
     loadServiceAccounts();
@@ -29,17 +36,48 @@ const IAMDashboardPage = () => {
     }
   };
 
+  const handleCreateServiceAccount = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setCreateLoading(true);
+    try {
+      await apiClient.post('/v1/projects/demo-project/serviceAccounts', {
+        accountId: formData.accountId,
+        serviceAccount: {
+          displayName: formData.displayName,
+          description: formData.description
+        }
+      });
+      setShowCreateModal(false);
+      setFormData({ accountId: '', displayName: '', description: '' });
+      await loadServiceAccounts();
+    } catch (error: any) {
+      console.error('Failed to create service account:', error);
+      alert(error.response?.data?.message || 'Failed to create service account');
+    } finally {
+      setCreateLoading(false);
+    }
+  };
+
   return (
     <div className="p-6 max-w-7xl mx-auto">
       {/* Header */}
-      <div className="mb-8">
-        <h1 className="text-3xl font-semibold text-gray-900 flex items-center gap-3">
-          <Shield className="w-8 h-8 text-blue-600" />
-          IAM & Admin
-        </h1>
-        <p className="text-gray-600 mt-2">
-          Manage identity and access control for your GCP resources
-        </p>
+      <div className="mb-8 flex items-center justify-between">
+        <div>
+          <h1 className="text-3xl font-semibold text-gray-900 flex items-center gap-3">
+            <Shield className="w-8 h-8 text-blue-600" />
+            IAM & Admin
+          </h1>
+          <p className="text-gray-600 mt-2">
+            Manage identity and access control for your GCP resources
+          </p>
+        </div>
+        <button
+          onClick={() => setShowCreateModal(true)}
+          className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+        >
+          <Plus className="w-5 h-5" />
+          Create Service Account
+        </button>
       </div>
 
       {/* Quick Stats */}
@@ -182,6 +220,89 @@ const IAMDashboardPage = () => {
           </div>
         </div>
       </div>
+
+      {/* Create Service Account Modal */}
+      {showCreateModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg shadow-xl w-full max-w-md p-6">
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-xl font-semibold text-gray-900">Create Service Account</h2>
+              <button
+                onClick={() => setShowCreateModal(false)}
+                className="text-gray-400 hover:text-gray-600"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            
+            <form onSubmit={handleCreateServiceAccount}>
+              <div className="space-y-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Account ID *
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    value={formData.accountId}
+                    onChange={(e) => setFormData({ ...formData, accountId: e.target.value })}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    placeholder="my-service-account"
+                    pattern="[a-z0-9-]+"
+                    title="Only lowercase letters, numbers, and hyphens"
+                  />
+                  <p className="text-xs text-gray-500 mt-1">
+                    Lowercase letters, numbers, and hyphens only
+                  </p>
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Display Name
+                  </label>
+                  <input
+                    type="text"
+                    value={formData.displayName}
+                    onChange={(e) => setFormData({ ...formData, displayName: e.target.value })}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    placeholder="My Service Account"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Description
+                  </label>
+                  <textarea
+                    value={formData.description}
+                    onChange={(e) => setFormData({ ...formData, description: e.target.value })}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    rows={3}
+                    placeholder="Service account description..."
+                  />
+                </div>
+              </div>
+
+              <div className="flex gap-3 mt-6">
+                <button
+                  type="button"
+                  onClick={() => setShowCreateModal(false)}
+                  className="flex-1 px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={createLoading}
+                  className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {createLoading ? 'Creating...' : 'Create'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

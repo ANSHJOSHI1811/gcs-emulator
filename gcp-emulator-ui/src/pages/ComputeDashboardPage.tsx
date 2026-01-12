@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Cpu, Server, MapPin, Settings } from 'lucide-react';
+import { Cpu, Server, MapPin, Settings, Plus, X, StopCircle, Play, Trash2 } from 'lucide-react';
 import { apiClient } from '../api/client';
 
 interface Zone {
@@ -24,8 +24,16 @@ interface Instance {
   zone: string;
   machineType: string;
   status: string;
-  internalIp: string;
-  externalIp: string;
+  networkInterfaces?: Array<{
+    networkIP: string;
+    accessConfigs?: Array<{
+      natIP: string;
+    }>;
+  }>;
+  _emulator?: {
+    containerId: string;
+    containerName: string;
+  };
 }
 
 const ComputeDashboardPage = () => {
@@ -33,6 +41,31 @@ const ComputeDashboardPage = () => {
   const [instances, setInstances] = useState<Instance[]>([]);
   const [machineTypes, setMachineTypes] = useState<MachineType[]>([]);
   const [loading, setLoading] = useState(true);
+  const [showCreateModal, setShowCreateModal] = useState(false);
+  const [createLoading, setCreateLoading] = useState(false);
+  const [formData, setFormData] = useState({
+    name: '',
+    zone: 'us-central1-a',
+    machineType: 'n1-standard-1'
+  });
+
+  // Helper function to extract resource name from GCP URL
+  const extractResourceName = (url: string): string => {
+    if (!url) return '-';
+    // Extract the last part after the last slash
+    const parts = url.split('/');
+    return parts[parts.length - 1] || url;
+  };
+
+  // Helper function to get internal IP from network interfaces
+  const getInternalIp = (instance: Instance): string => {
+    return instance.networkInterfaces?.[0]?.networkIP || '-';
+  };
+
+  // Helper function to get external IP from network interfaces
+  const getExternalIp = (instance: Instance): string => {
+    return instance.networkInterfaces?.[0]?.accessConfigs?.[0]?.natIP || '-';
+  };
 
   useEffect(() => {
     loadData();
@@ -90,17 +123,102 @@ const ComputeDashboardPage = () => {
     }
   };
 
+  const handleCreateInstance = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setCreateLoading(true);
+    try {
+      await apiClient.post(
+        `/compute/v1/projects/demo-project/zones/${formData.zone}/instances`,
+        {
+          name: formData.name,
+          machineType: formData.machineType,
+          disks: [
+            {
+              boot: true,
+              initializeParams: {
+                diskSizeGb: '10',
+                sourceImage: 'projects/ubuntu-os-cloud/global/images/family/ubuntu-2004-lts'
+              }
+            }
+          ]
+        }
+      );
+      setShowCreateModal(false);
+      setFormData({ name: '', zone: 'us-central1-a', machineType: 'n1-standard-1' });
+      await loadData();
+    } catch (error: any) {
+      console.error('Failed to create instance:', error);
+      alert(error.response?.data?.error?.message || 'Failed to create instance');
+    } finally {
+      setCreateLoading(false);
+    }
+  };
+
+  const handleDeleteInstance = async (instanceName: string, zoneName: string) => {
+    if (!confirm(`Are you sure you want to delete instance "${instanceName}"?`)) {
+      return;
+    }
+    try {
+      const zone = extractResourceName(zoneName);
+      await apiClient.delete(
+        `/compute/v1/projects/demo-project/zones/${zone}/instances/${instanceName}`
+      );
+      await loadData();
+    } catch (error: any) {
+      console.error('Failed to delete instance:', error);
+      alert(error.response?.data?.error?.message || 'Failed to delete instance');
+    }
+  };
+
+  const handleStopInstance = async (instanceName: string, zoneName: string) => {
+    try {
+      const zone = extractResourceName(zoneName);
+      await apiClient.post(
+        `/compute/v1/projects/demo-project/zones/${zone}/instances/${instanceName}/stop`
+      );
+      await loadData();
+    } catch (error: any) {
+      console.error('Failed to stop instance:', error);
+      alert(error.response?.data?.error?.message || 'Failed to stop instance');
+    }
+  };
+
+  const handleStartInstance = async (instanceName: string, zoneName: string) => {
+    try {
+      const zone = extractResourceName(zoneName);
+      await apiClient.post(
+        `/compute/v1/projects/demo-project/zones/${zone}/instances/${instanceName}/start`
+      );
+      await loadData();
+    } catch (error: any) {
+      console.error('Failed to start instance:', error);
+      alert(error.response?.data?.error?.message || 'Failed to start instance');
+      alert(error.response?.data?.message || 'Failed to create instance');
+    } finally {
+      setCreateLoading(false);
+    }
+  };
+
   return (
     <div className="p-6 max-w-7xl mx-auto">
       {/* Header */}
-      <div className="mb-8">
-        <h1 className="text-3xl font-semibold text-gray-900 flex items-center gap-3">
-          <Cpu className="w-8 h-8 text-blue-600" />
-          Compute Engine
-        </h1>
-        <p className="text-gray-600 mt-2">
-          Virtual machines running in Google's data center
-        </p>
+      <div className="mb-8 flex items-center justify-between">
+        <div>
+          <h1 className="text-3xl font-semibold text-gray-900 flex items-center gap-3">
+            <Cpu className="w-8 h-8 text-blue-600" />
+            Compute Engine
+          </h1>
+          <p className="text-gray-600 mt-2">
+            Manage virtual machines and compute resources
+          </p>
+        </div>
+        <button
+          onClick={() => setShowCreateModal(true)}
+          className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+        >
+          <Plus className="w-5 h-5" />
+          Create Instance
+        </button>
       </div>
 
       {/* Quick Stats */}
@@ -197,7 +315,13 @@ const ComputeDashboardPage = () => {
                     External IP
                   </th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Container ID
+                  </th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                     Status
+                  </th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Actions
                   </th>
                 </tr>
               </thead>
@@ -213,16 +337,25 @@ const ComputeDashboardPage = () => {
                       </div>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">
-                      {instance.zone}
+                      {extractResourceName(instance.zone)}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">
-                      {instance.machineType}
+                      {extractResourceName(instance.machineType)}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">
-                      {instance.internalIp || '-'}
+                      {getInternalIp(instance)}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">
-                      {instance.externalIp || '-'}
+                      {getExternalIp(instance)}
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600 font-mono">
+                      {instance._emulator?.containerId ? (
+                        <span className="text-xs bg-gray-100 px-2 py-1 rounded" title={instance._emulator.containerId}>
+                          {instance._emulator.containerId.substring(0, 12)}
+                        </span>
+                      ) : (
+                        '-'
+                      )}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
                       <span
@@ -232,6 +365,34 @@ const ComputeDashboardPage = () => {
                       >
                         {instance.status}
                       </span>
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm">
+                      <div className="flex items-center space-x-2">
+                        {instance.status === 'RUNNING' ? (
+                          <button
+                            onClick={() => handleStopInstance(instance.name, instance.zone)}
+                            className="text-orange-600 hover:text-orange-800 p-1 rounded hover:bg-orange-50 transition-colors"
+                            title="Stop instance"
+                          >
+                            <StopCircle className="w-5 h-5" />
+                          </button>
+                        ) : instance.status === 'TERMINATED' || instance.status === 'STOPPED' ? (
+                          <button
+                            onClick={() => handleStartInstance(instance.name, instance.zone)}
+                            className="text-green-600 hover:text-green-800 p-1 rounded hover:bg-green-50"
+                            title="Start instance"
+                          >
+                            <Play className="w-5 h-5" />
+                          </button>
+                        ) : null}
+                        <button
+                          onClick={() => handleDeleteInstance(instance.name, instance.zone)}
+                          className="p-1 text-red-600 hover:text-red-800 hover:bg-red-50 rounded"
+                          title="Delete instance"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      </div>
                     </td>
                   </tr>
                 ))}
@@ -291,6 +452,106 @@ const ComputeDashboardPage = () => {
           </div>
         </div>
       </div>
+
+      {/* Create Instance Modal */}
+      {showCreateModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg shadow-xl w-full max-w-md p-6">
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-xl font-semibold text-gray-900">Create VM Instance</h2>
+              <button
+                onClick={() => setShowCreateModal(false)}
+                className="text-gray-400 hover:text-gray-600"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            
+            <form onSubmit={handleCreateInstance}>
+              <div className="space-y-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Instance Name *
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    value={formData.name}
+                    onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    placeholder="my-instance"
+                    pattern="[a-z0-9-]+"
+                    title="Only lowercase letters, numbers, and hyphens"
+                  />
+                  <p className="text-xs text-gray-500 mt-1">
+                    Lowercase letters, numbers, and hyphens only
+                  </p>
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Zone *
+                  </label>
+                  <select
+                    required
+                    value={formData.zone}
+                    onChange={(e) => setFormData({ ...formData, zone: e.target.value })}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  >
+                    {zones.map(zone => (
+                      <option key={zone.name} value={zone.name}>
+                        {zone.name} ({zone.region})
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Machine Type *
+                  </label>
+                  <select
+                    required
+                    value={formData.machineType}
+                    onChange={(e) => setFormData({ ...formData, machineType: e.target.value })}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  >
+                    <option value="e2-micro">e2-micro (2 vCPUs, 1 GB RAM)</option>
+                    <option value="e2-small">e2-small (2 vCPUs, 2 GB RAM)</option>
+                    <option value="e2-medium">e2-medium (2 vCPUs, 4 GB RAM)</option>
+                    <option value="n1-standard-1">n1-standard-1 (1 vCPU, 3.75 GB RAM)</option>
+                    <option value="n1-standard-2">n1-standard-2 (2 vCPUs, 7.5 GB RAM)</option>
+                    <option value="n1-standard-4">n1-standard-4 (4 vCPUs, 15 GB RAM)</option>
+                  </select>
+                </div>
+
+                <div className="bg-gray-50 p-3 rounded-lg">
+                  <p className="text-xs text-gray-600">
+                    <strong>Note:</strong> Instance will be created with Ubuntu 20.04 LTS image and a Docker container will be automatically spawned.
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex gap-3 mt-6">
+                <button
+                  type="button"
+                  onClick={() => setShowCreateModal(false)}
+                  className="flex-1 px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={createLoading}
+                  className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {createLoading ? 'Creating...' : 'Create'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

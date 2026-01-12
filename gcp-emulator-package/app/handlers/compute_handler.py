@@ -38,7 +38,7 @@ def list_zones(project_id):
     
     return jsonify({
         "kind": "compute#zoneList",
-        "items": [zone.to_dict() for zone in zones]
+        "items": [zone.to_dict(project_id) for zone in zones]
     })
 
 
@@ -49,7 +49,7 @@ def get_zone(project_id, zone_name):
     if not zone:
         return error_response(404, "NOT_FOUND", f"Zone {zone_name} not found")
     
-    return jsonify(zone.to_dict())
+    return jsonify(zone.to_dict(project_id))
 
 
 # ========== Machine Types ==========
@@ -61,7 +61,7 @@ def list_machine_types(project_id, zone_name):
     
     return jsonify({
         "kind": "compute#machineTypeList",
-        "items": [mt.to_dict() for mt in machine_types]
+        "items": [mt.to_dict(project_id) for mt in machine_types]
     })
 
 
@@ -193,7 +193,7 @@ def list_instances(project_id, zone_name):
     
     return jsonify({
         "kind": "compute#instanceList",
-        "items": [inst.to_dict() for inst in instances]
+        "items": [inst.to_dict(project_id) for inst in instances]
     })
 
 
@@ -209,7 +209,7 @@ def get_instance(project_id, zone_name, instance_name):
     if not instance:
         return error_response(404, "NOT_FOUND", f"Instance {instance_name} not found")
     
-    return jsonify(instance.to_dict())
+    return jsonify(instance.to_dict(project_id))
 
 
 @compute_bp.route("/compute/v1/projects/<project_id>/zones/<zone_name>/instances/<instance_name>", methods=["DELETE"])

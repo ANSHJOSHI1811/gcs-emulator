@@ -19,14 +19,15 @@ class Zone(db.Model):
     def __repr__(self) -> str:
         return f"<Zone {self.name}>"
     
-    def to_dict(self) -> dict:
+    def to_dict(self, project_id="demo-project") -> dict:
         """Convert to GCP API format"""
         return {
-            "id": self.id,
+            "id": str(abs(hash(self.name)) % (10**18)),
             "name": self.name,
-            "region": self.region,
+            "region": f"https://www.googleapis.com/compute/v1/projects/{project_id}/regions/{self.region}",
             "status": self.status,
-            "description": self.description,
+            "description": self.description or f"Zone {self.name}",
+            "selfLink": f"https://www.googleapis.com/compute/v1/projects/{project_id}/zones/{self.name}",
         }
 
 
@@ -45,16 +46,17 @@ class MachineType(db.Model):
     def __repr__(self) -> str:
         return f"<MachineType {self.name}>"
     
-    def to_dict(self) -> dict:
+    def to_dict(self, project_id="demo-project") -> dict:
         """Convert to GCP API format"""
         return {
-            "id": self.id,
+            "id": str(abs(hash(f"{self.zone}/{self.name}")) % (10**18)),
             "name": self.name,
             "zone": self.zone,
             "guestCpus": self.guest_cpus,
             "memoryMb": self.memory_mb,
-            "description": self.description,
+            "description": self.description or f"Machine type {self.name}",
             "isSharedCpu": self.is_shared_cpu,
+            "selfLink": f"https://www.googleapis.com/compute/v1/projects/{project_id}/zones/{self.zone}/machineTypes/{self.name}",
         }
 
 
@@ -65,8 +67,8 @@ class Instance(db.Model):
     id = db.Column(db.String(255), primary_key=True)  # Unique ID
     project_id = db.Column(db.String(63), db.ForeignKey("projects.id"), nullable=False)
     name = db.Column(db.String(255), nullable=False)
-    zone = db.Column(db.String(100), db.ForeignKey("zones.id"), nullable=False)
-    machine_type = db.Column(db.String(100), nullable=False)
+    zone = db.Column(db.String(500), db.ForeignKey("zones.id"), nullable=False)  # Increased for URL format
+    machine_type = db.Column(db.String(500), nullable=False)  # Increased for URL format
     status = db.Column(db.String(50), default="PROVISIONING")  # PROVISIONING, RUNNING, STOPPING, STOPPED, TERMINATED
     
     # Container/Docker info
@@ -78,7 +80,7 @@ class Instance(db.Model):
     external_ip = db.Column(db.String(15))
     
     # Image and disk
-    source_image = db.Column(db.String(255))
+    source_image = db.Column(db.String(500))  # Increased for URL format
     disk_size_gb = db.Column(db.Integer, default=10)
     
     # Metadata
@@ -101,21 +103,23 @@ class Instance(db.Model):
     def __repr__(self) -> str:
         return f"<Instance {self.name}>"
     
-    def to_dict(self) -> dict:
+    def to_dict(self, project_id="demo-project") -> dict:
         """Convert to GCP API format"""
         result = {
-            "id": self.id,
+            "id": str(abs(hash(f"{project_id}/{self.zone}/{self.name}")) % (10**18)),
             "name": self.name,
-            "zone": self.zone,
-            "machineType": self.machine_type,
+            "zone": f"https://www.googleapis.com/compute/v1/projects/{project_id}/zones/{self.zone}",
+            "machineType": f"https://www.googleapis.com/compute/v1/projects/{project_id}/zones/{self.zone}/machineTypes/{self.machine_type}",
             "status": self.status,
             "creationTimestamp": self.created_at.isoformat() + "Z",
+            "selfLink": f"https://www.googleapis.com/compute/v1/projects/{project_id}/zones/{self.zone}/instances/{self.name}",
         }
         
         if self.internal_ip or self.external_ip:
             result["networkInterfaces"] = [{
+                "network": f"https://www.googleapis.com/compute/v1/projects/{project_id}/global/networks/default",
                 "networkIP": self.internal_ip,
-                "accessConfigs": [{"natIP": self.external_ip}] if self.external_ip else []
+                "accessConfigs": [{"natIP": self.external_ip, "type": "ONE_TO_ONE_NAT", "name": "External NAT"}] if self.external_ip else []
             }]
         
         if self.source_image:
