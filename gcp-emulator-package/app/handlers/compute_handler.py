@@ -9,8 +9,9 @@ from flask import Blueprint, request, jsonify
 from app.factory import db
 from app.models.compute import Instance, Zone, MachineType
 from app.models.project import Project
-from app.models.vpc import NetworkInterface, Network, Subnetwork
+from app.models.vpc import NetworkInterface, Network, Subnetwork, Address
 from app.services.ip_allocation_service import IPAllocationService
+from app.services.external_ip_service import ExternalIPPoolService
 from app.handlers.errors import error_response
 import uuid
 
@@ -163,6 +164,16 @@ def create_instance(project_id, zone_name):
     
     network_interfaces = data.get("networkInterfaces", [{}])
     
+    # Check for external IP request in access configs
+    request_external_ip = False
+    static_external_ip = None
+    if network_interfaces and len(network_interfaces) > 0:
+        access_configs = network_interfaces[0].get("accessConfigs", [])
+        if access_configs and len(access_configs) > 0:
+            request_external_ip = True
+            # Check if user specified a static IP
+            static_external_ip = access_configs[0].get("natIP")
+    
     # Service account
     service_accounts = data.get("serviceAccounts", [])
     service_account_email = service_accounts[0].get("email") if service_accounts else None
@@ -232,6 +243,33 @@ def create_instance(project_id, zone_name):
                 instance.internal_ip = interface.network_ip
                 db.session.commit()
             
+            # Handle external IP if requested
+            if request_external_ip:
+                region = "-".join(zone_name.split("-")[:-1])
+                try:
+                    if static_external_ip:
+                        # Use the specified static IP
+                        addr_obj = Address.query.filter_by(
+                            project_id=project_id,
+                            address=static_external_ip
+                        ).first()
+                        if addr_obj and addr_obj.status == 'RESERVED':
+                            ExternalIPPoolService.mark_in_use(addr_obj, instance.id, interface.id if interface else None)
+                            instance.external_ip = static_external_ip
+                        else:
+                            print(f"Static IP {static_external_ip} not available")
+                    else:
+                        # Allocate ephemeral external IP
+                        external_ip = ExternalIPPoolService.allocate_ephemeral_ip(
+                            project_id=project_id,
+                            region=region,
+                            network_tier='PREMIUM'
+                        )
+                        instance.external_ip = external_ip
+                    db.session.commit()
+                except Exception as ext_ip_error:
+                    print(f"Failed to allocate external IP: {ext_ip_error}")
+            
     except Exception as e:
         # If Docker fails, still create instance but mark as TERMINATED
         print(f"Failed to create Docker container: {e}")
@@ -244,6 +282,29 @@ def create_instance(project_id, zone_name):
             if interface:
                 instance.internal_ip = interface.network_ip
                 db.session.commit()
+            
+            # Handle external IP even if Docker failed
+            if request_external_ip:
+                region = "-".join(zone_name.split("-")[:-1])
+                try:
+                    if static_external_ip:
+                        addr_obj = Address.query.filter_by(
+                            project_id=project_id,
+                            address=static_external_ip
+                        ).first()
+                        if addr_obj and addr_obj.status == 'RESERVED':
+                            ExternalIPPoolService.mark_in_use(addr_obj, instance.id, interface.id if interface else None)
+                            instance.external_ip = static_external_ip
+                    else:
+                        external_ip = ExternalIPPoolService.allocate_ephemeral_ip(
+                            project_id=project_id,
+                            region=region,
+                            network_tier='PREMIUM'
+                        )
+                        instance.external_ip = external_ip
+                    db.session.commit()
+                except Exception as ext_ip_error:
+                    print(f"Failed to allocate external IP: {ext_ip_error}")
         except Exception as net_error:
             print(f"Failed to create network interface: {net_error}")
     

@@ -342,3 +342,66 @@ class NetworkInterface(db.Model):
         result['accessConfigs'] = []
         
         return result
+
+
+class Address(db.Model):
+    """External IP Address model - for static and ephemeral external IPs"""
+    __tablename__ = 'addresses'
+    
+    id = db.Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    name = db.Column(db.String(63), nullable=False)
+    project_id = db.Column(db.String(255), db.ForeignKey('projects.id', ondelete='CASCADE'), nullable=False)
+    region = db.Column(db.String(50), nullable=False)
+    address = db.Column(db.String(50), nullable=False)  # The actual IP address
+    address_type = db.Column(db.String(20), default='EXTERNAL')  # INTERNAL or EXTERNAL
+    status = db.Column(db.String(20), default='RESERVED')  # RESERVED, IN_USE
+    network_tier = db.Column(db.String(20), default='PREMIUM')  # PREMIUM or STANDARD
+    purpose = db.Column(db.String(50))  # GCE_ENDPOINT, NAT_AUTO, etc.
+    description = db.Column(db.Text)
+    
+    # For IN_USE addresses, track what's using them
+    user_instance_id = db.Column(db.String(255))  # Instance using this IP
+    user_network_interface_id = db.Column(UUID(as_uuid=True))  # NIC using this IP
+    
+    creation_timestamp = db.Column(db.DateTime, default=datetime.utcnow)
+    
+    __table_args__ = (
+        db.UniqueConstraint('project_id', 'region', 'name', name='uq_address_project_region_name'),
+        db.UniqueConstraint('address', name='uq_address_ip'),
+    )
+    
+    def to_dict(self, project_id=None):
+        """Convert to GCP API format"""
+        pid = project_id or self.project_id
+        self_link = f"http://127.0.0.1:8080/compute/v1/projects/{pid}/regions/{self.region}/addresses/{self.name}"
+        
+        result = {
+            'id': str(self.id),
+            'name': self.name,
+            'address': self.address,
+            'addressType': self.address_type,
+            'status': self.status,
+            'region': f"http://127.0.0.1:8080/compute/v1/projects/{pid}/regions/{self.region}",
+            'selfLink': self_link,
+            'networkTier': self.network_tier,
+            'creationTimestamp': self.creation_timestamp.isoformat() + 'Z',
+            'kind': 'compute#address'
+        }
+        
+        if self.description:
+            result['description'] = self.description
+            
+        if self.purpose:
+            result['purpose'] = self.purpose
+            
+        # Include user information if in use
+        if self.status == 'IN_USE' and self.user_instance_id:
+            # Build the instance URL
+            from app.models.compute import Instance
+            instance = Instance.query.filter_by(id=self.user_instance_id).first()
+            if instance:
+                result['users'] = [
+                    f"http://127.0.0.1:8080/compute/v1/projects/{pid}/zones/{instance.zone}/instances/{instance.name}"
+                ]
+        
+        return result
