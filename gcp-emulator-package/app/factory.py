@@ -98,6 +98,7 @@ def register_blueprints(app: Flask) -> None:
     from app.handlers.compute_handler import compute_bp
     from app.routes.network_routes import network_bp
     from app.routes.subnet_routes import subnet_bp
+    from app.routes.firewall_routes import firewall_bp
     
     app.register_blueprint(health_bp)
     app.register_blueprint(buckets_bp, url_prefix="/storage/v1/b")
@@ -122,6 +123,7 @@ def register_blueprints(app: Flask) -> None:
     # VPC Networking
     app.register_blueprint(network_bp)  # VPC networks
     app.register_blueprint(subnet_bp)  # VPC subnetworks
+    app.register_blueprint(firewall_bp)  # VPC firewall rules
     
     # Register SDK compatibility middleware
     register_sdk_middleware(app)

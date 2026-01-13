@@ -148,6 +148,7 @@ class FirewallRule(db.Model):
     
     self_link = db.Column(db.Text)
     creation_timestamp = db.Column(db.DateTime, default=datetime.utcnow)
+    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
     
     # Relationships
     network = db.relationship('Network', back_populates='firewall_rules')
@@ -157,6 +158,13 @@ class FirewallRule(db.Model):
     __table_args__ = (
         db.UniqueConstraint('network_id', 'name', name='uq_firewall_network_name'),
     )
+    
+    def get_self_link(self, project_id=None):
+        """Get the selfLink for this firewall rule"""
+        from app.models.vpc import Network
+        network = Network.query.get(self.network_id)
+        pid = project_id or network.project_id
+        return f"http://127.0.0.1:8080/compute/v1/projects/{pid}/global/firewalls/{self.name}"
     
     def to_dict(self, project_id=None):
         """Convert to GCP API format"""
@@ -180,14 +188,15 @@ class FirewallRule(db.Model):
             'kind': 'compute#firewall'
         }
         
-        # Add allowed or denied protocols
-        allowed = [p.to_dict() for p in self.allowed_protocols if p.type == 'allowed']
-        denied = [p.to_dict() for p in self.allowed_protocols if p.type == 'denied']
+        # Add allowed or denied protocols based on action
+        protocols_list = []
+        for p in self.allowed_protocols:
+            protocols_list.append(p.to_dict())
         
-        if allowed:
-            result['allowed'] = allowed
-        if denied:
-            result['denied'] = denied
+        if self.action == 'ALLOW' and protocols_list:
+            result['allowed'] = protocols_list
+        elif self.action == 'DENY' and protocols_list:
+            result['denied'] = protocols_list
         
         # Add match criteria
         if self.source_ranges:
@@ -212,7 +221,6 @@ class FirewallAllowedDenied(db.Model):
     
     id = db.Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     firewall_rule_id = db.Column(UUID(as_uuid=True), db.ForeignKey('firewall_rules.id', ondelete='CASCADE'), nullable=False)
-    type = db.Column(db.String(10), nullable=False)  # 'allowed' or 'denied'
     ip_protocol = db.Column(db.String(20), nullable=False)
     ports = db.Column(ARRAY(db.Text))
     
