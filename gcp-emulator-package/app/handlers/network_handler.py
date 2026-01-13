@@ -284,7 +284,6 @@ def _create_default_firewall_rules(network_id, project_id):
     protocol_internal = FirewallAllowedDenied(
         id=uuid.uuid4(),
         firewall_rule_id=rule_internal.id,
-        type='allowed',
         ip_protocol='all'
     )
     db.session.add(protocol_internal)
@@ -306,7 +305,6 @@ def _create_default_firewall_rules(network_id, project_id):
     protocol_ssh = FirewallAllowedDenied(
         id=uuid.uuid4(),
         firewall_rule_id=rule_ssh.id,
-        type='allowed',
         ip_protocol='tcp',
         ports=['22']
     )
@@ -329,7 +327,6 @@ def _create_default_firewall_rules(network_id, project_id):
     protocol_rdp = FirewallAllowedDenied(
         id=uuid.uuid4(),
         firewall_rule_id=rule_rdp.id,
-        type='allowed',
         ip_protocol='tcp',
         ports=['3389']
     )
@@ -352,7 +349,6 @@ def _create_default_firewall_rules(network_id, project_id):
     protocol_icmp = FirewallAllowedDenied(
         id=uuid.uuid4(),
         firewall_rule_id=rule_icmp.id,
-        type='allowed',
         ip_protocol='icmp'
     )
     db.session.add(protocol_icmp)
