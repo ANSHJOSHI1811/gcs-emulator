@@ -16,6 +16,7 @@ from sqlalchemy import and_, or_
 from app.factory import db
 from app.models.vpc import Network, FirewallRule, FirewallAllowedDenied
 from app.validators.vpc_validators import validate_firewall_rule, validate_port_spec
+from app.utils.operation_utils import create_operation
 from datetime import datetime
 import uuid
 
@@ -147,7 +148,14 @@ def create_firewall_rule(project_id: str):
         
         db.session.commit()
         
-        return jsonify(firewall_rule.to_dict(project_id=project_id)), 201
+        # Return operation instead of firewall object
+        operation = create_operation(
+            project_id=project_id,
+            operation_type='insert',
+            target_link=firewall_rule.get_self_link(project_id),
+            target_id=str(firewall_rule.id)
+        )
+        return jsonify(operation.to_dict()), 200
         
     except IntegrityError as e:
         db.session.rollback()
@@ -270,12 +278,14 @@ def delete_firewall_rule(project_id: str, firewall_name: str):
         db.session.delete(firewall_rule)
         db.session.commit()
         
-        return jsonify({
-            "kind": "compute#operation",
-            "operationType": "delete",
-            "status": "DONE",
-            "targetLink": firewall_rule.get_self_link(project_id)
-        }), 200
+        # Return operation
+        operation = create_operation(
+            project_id=project_id,
+            operation_type='delete',
+            target_link=firewall_rule.get_self_link(project_id),
+            target_id=str(firewall_rule.id)
+        )
+        return jsonify(operation.to_dict()), 200
         
     except Exception as e:
         db.session.rollback()

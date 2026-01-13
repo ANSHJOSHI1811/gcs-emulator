@@ -12,6 +12,7 @@ from app.models.project import Project
 from app.models.vpc import NetworkInterface, Network, Subnetwork, Address
 from app.services.ip_allocation_service import IPAllocationService
 from app.services.external_ip_service import ExternalIPPoolService
+from app.utils.operation_utils import create_operation
 from app.handlers.errors import error_response
 import uuid
 
@@ -308,7 +309,15 @@ def create_instance(project_id, zone_name):
         except Exception as net_error:
             print(f"Failed to create network interface: {net_error}")
     
-    return jsonify(instance.to_dict()), 201
+    # Return operation instead of instance object
+    operation = create_operation(
+        project_id=project_id,
+        operation_type='insert',
+        target_link=f"http://127.0.0.1:8080/compute/v1/projects/{project_id}/zones/{zone_name}/instances/{instance_name}",
+        target_id=str(instance.id),
+        zone=zone_name
+    )
+    return jsonify(operation.to_dict()), 200
 
 
 @compute_bp.route("/compute/v1/projects/<project_id>/zones/<zone_name>/instances", methods=["GET"])
@@ -366,7 +375,15 @@ def delete_instance(project_id, zone_name, instance_name):
     db.session.delete(instance)
     db.session.commit()
     
-    return jsonify({"kind": "compute#operation"}), 200
+    # Return operation
+    operation = create_operation(
+        project_id=project_id,
+        operation_type='delete',
+        target_link=f"http://127.0.0.1:8080/compute/v1/projects/{project_id}/zones/{zone_name}/instances/{instance_name}",
+        target_id=str(instance.id),
+        zone=zone_name
+    )
+    return jsonify(operation.to_dict()), 200
 
 
 @compute_bp.route("/compute/v1/projects/<project_id>/zones/<zone_name>/instances/<instance_name>/start", methods=["POST"])
@@ -396,7 +413,15 @@ def start_instance(project_id, zone_name, instance_name):
         except Exception as e:
             return error_response(500, "INTERNAL", f"Failed to start container: {e}")
     
-    return jsonify({"kind": "compute#operation"}), 200
+    # Return operation
+    operation = create_operation(
+        project_id=project_id,
+        operation_type='start',
+        target_link=f"http://127.0.0.1:8080/compute/v1/projects/{project_id}/zones/{zone_name}/instances/{instance_name}",
+        target_id=str(instance.id),
+        zone=zone_name
+    )
+    return jsonify(operation.to_dict()), 200
 
 
 @compute_bp.route("/compute/v1/projects/<project_id>/zones/<zone_name>/instances/<instance_name>/stop", methods=["POST"])
@@ -426,4 +451,12 @@ def stop_instance(project_id, zone_name, instance_name):
         except Exception as e:
             return error_response(500, "INTERNAL", f"Failed to stop container: {e}")
     
-    return jsonify({"kind": "compute#operation"}), 200
+    # Return operation
+    operation = create_operation(
+        project_id=project_id,
+        operation_type='stop',
+        target_link=f"http://127.0.0.1:8080/compute/v1/projects/{project_id}/zones/{zone_name}/instances/{instance_name}",
+        target_id=str(instance.id),
+        zone=zone_name
+    )
+    return jsonify(operation.to_dict()), 200

@@ -169,7 +169,15 @@ def create_subnetwork(project_id: str, region: str):
         db.session.add(subnet)
         db.session.commit()
         
-        return jsonify(subnet.to_dict(project_id=project_id)), 201
+        # Return operation instead of subnet object
+        operation = create_operation(
+            project_id=project_id,
+            operation_type='insert',
+            target_link=subnet.get_self_link(project_id),
+            target_id=str(subnet.id),
+            region=region
+        )
+        return jsonify(operation.to_dict()), 200
         
     except IntegrityError as e:
         db.session.rollback()
@@ -326,12 +334,15 @@ def delete_subnetwork(project_id: str, region: str, subnet_name: str):
         db.session.delete(subnet)
         db.session.commit()
         
-        return jsonify({
-            "kind": "compute#operation",
-            "operationType": "delete",
-            "status": "DONE",
-            "targetLink": subnet.get_self_link(project_id)
-        }), 200
+        # Return operation
+        operation = create_operation(
+            project_id=project_id,
+            operation_type='delete',
+            target_link=subnet.get_self_link(project_id),
+            target_id=str(subnet.id),
+            region=region
+        )
+        return jsonify(operation.to_dict()), 200
         
     except Exception as e:
         db.session.rollback()
