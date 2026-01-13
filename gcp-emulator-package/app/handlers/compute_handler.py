@@ -9,7 +9,10 @@ from flask import Blueprint, request, jsonify
 from app.factory import db
 from app.models.compute import Instance, Zone, MachineType
 from app.models.project import Project
+from app.models.vpc import NetworkInterface, Network, Subnetwork
+from app.services.ip_allocation_service import IPAllocationService
 from app.handlers.errors import error_response
+import uuid
 
 compute_bp = Blueprint("compute", __name__)
 
@@ -27,6 +30,57 @@ def get_docker_client():
             print(f"Warning: Docker not available: {e}")
             docker_client = None
     return docker_client
+
+
+def _create_default_network_interface(instance: Instance, project_id: str):
+    """Create default network interface for an instance"""
+    try:
+        # Get default or auto network
+        network = Network.query.filter_by(project_id=project_id, name="default").first()
+        if not network:
+            network = Network.query.filter_by(project_id=project_id, name="auto-network").first()
+        
+        if not network:
+            print(f"No default/auto-network found for project {project_id}")
+            return None
+        
+        # Get zone region
+        zone = instance.zone
+        region = "-".join(zone.split("-")[:-1])
+        
+        # Get subnet in instance's region
+        subnetwork = Subnetwork.query.filter_by(network_id=network.id, region=region).first()
+        if not subnetwork:
+            print(f"No subnet found for network in region {region}")
+            return None
+        
+        # Allocate IP
+        network_ip = IPAllocationService.allocate_ip(subnetwork)
+        if not network_ip:
+            print(f"No available IPs in subnet {subnetwork.name}")
+            return None
+        
+        # Create interface
+        interface = NetworkInterface(
+            id=uuid.uuid4(),
+            instance_id=instance.id,
+            network_id=network.id,
+            subnetwork_id=subnetwork.id,
+            name="nic0",
+            network_ip=network_ip,
+            network_tier="PREMIUM",
+            nic_index=0,
+            creation_timestamp=datetime.utcnow()
+        )
+        
+        db.session.add(interface)
+        db.session.commit()
+        return interface
+        
+    except Exception as e:
+        db.session.rollback()
+        print(f"Error creating default network interface: {e}")
+        return None
 
 
 # ========== Zones ==========
@@ -169,16 +223,29 @@ def create_instance(project_id, zone_name):
             instance.container_name = container_name
             instance.status = "RUNNING"
             
-            # Generate fake IPs
-            instance.internal_ip = f"10.128.0.{secrets.randbelow(254) + 1}"
-            instance.external_ip = f"35.{secrets.randbelow(256)}.{secrets.randbelow(256)}.{secrets.randbelow(256)}"
-            
             db.session.commit()
+            
+            # Create default network interface with real IP allocation
+            interface = _create_default_network_interface(instance, project_id)
+            if interface:
+                # Update instance with allocated IP (for backward compatibility)
+                instance.internal_ip = interface.network_ip
+                db.session.commit()
+            
     except Exception as e:
         # If Docker fails, still create instance but mark as TERMINATED
         print(f"Failed to create Docker container: {e}")
         instance.status = "TERMINATED"
         db.session.commit()
+        
+        # Still try to create network interface
+        try:
+            interface = _create_default_network_interface(instance, project_id)
+            if interface:
+                instance.internal_ip = interface.network_ip
+                db.session.commit()
+        except Exception as net_error:
+            print(f"Failed to create network interface: {net_error}")
     
     return jsonify(instance.to_dict()), 201
 

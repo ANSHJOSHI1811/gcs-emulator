@@ -295,3 +295,50 @@ class Route(db.Model):
             result['tags'] = self.tags
             
         return result
+
+
+class NetworkInterface(db.Model):
+    """Network Interface model - connects instances to VPC networks"""
+    __tablename__ = 'network_interfaces'
+    
+    id = db.Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    instance_id = db.Column(db.String(255), db.ForeignKey('instances.id', ondelete='CASCADE'), nullable=False)
+    network_id = db.Column(UUID(as_uuid=True), db.ForeignKey('networks.id', ondelete='CASCADE'), nullable=False)
+    subnetwork_id = db.Column(UUID(as_uuid=True), db.ForeignKey('subnetworks.id', ondelete='SET NULL'))
+    name = db.Column(db.String(63), nullable=False, default='nic0')
+    network_ip = db.Column(db.String(50))  # Private IP
+    network_tier = db.Column(db.String(20), default='PREMIUM')  # PREMIUM or STANDARD
+    nic_index = db.Column(db.Integer, default=0, nullable=False)
+    creation_timestamp = db.Column(db.DateTime, default=datetime.utcnow)
+    
+    # Relationships
+    network = db.relationship('Network', foreign_keys=[network_id])
+    subnetwork = db.relationship('Subnetwork', foreign_keys=[subnetwork_id])
+    
+    __table_args__ = (
+        db.UniqueConstraint('instance_id', 'nic_index', name='uq_interface_instance_nic'),
+    )
+    
+    def to_dict(self, project_id=None):
+        """Convert to GCP API format"""
+        network = Network.query.get(self.network_id)
+        pid = project_id or network.project_id
+        
+        network_link = f"http://127.0.0.1:8080/compute/v1/projects/{pid}/global/networks/{network.name}"
+        
+        result = {
+            'name': self.name,
+            'network': network_link,
+            'networkIP': self.network_ip,
+            'kind': 'compute#networkInterface'
+        }
+        
+        if self.subnetwork_id:
+            subnetwork = Subnetwork.query.get(self.subnetwork_id)
+            if subnetwork:
+                result['subnetwork'] = f"http://127.0.0.1:8080/compute/v1/projects/{pid}/regions/{subnetwork.region}/subnetworks/{subnetwork.name}"
+        
+        # Access configs will be added separately (external IPs)
+        result['accessConfigs'] = []
+        
+        return result

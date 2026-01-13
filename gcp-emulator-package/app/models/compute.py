@@ -118,7 +118,23 @@ class Instance(db.Model):
             "selfLink": f"https://www.googleapis.com/compute/v1/projects/{project_id}/zones/{self.zone}/instances/{self.name}",
         }
         
-        if self.internal_ip or self.external_ip:
+        # Get network interfaces from database
+        from app.models.vpc import NetworkInterface
+        interfaces = NetworkInterface.query.filter_by(instance_id=self.id).order_by(NetworkInterface.nic_index).all()
+        
+        if interfaces:
+            result["networkInterfaces"] = [iface.to_dict(project_id) for iface in interfaces]
+            # Add external IP to first interface if instance has one (backward compatibility)
+            if self.external_ip and result["networkInterfaces"]:
+                if not result["networkInterfaces"][0].get("accessConfigs"):
+                    result["networkInterfaces"][0]["accessConfigs"] = []
+                result["networkInterfaces"][0]["accessConfigs"].append({
+                    "natIP": self.external_ip,
+                    "type": "ONE_TO_ONE_NAT",
+                    "name": "External NAT"
+                })
+        elif self.internal_ip or self.external_ip:
+            # Fallback for instances without network interface records (backward compatibility)
             result["networkInterfaces"] = [{
                 "network": f"https://www.googleapis.com/compute/v1/projects/{project_id}/global/networks/default",
                 "networkIP": self.internal_ip,
