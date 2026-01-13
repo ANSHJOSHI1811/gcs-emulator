@@ -23,7 +23,7 @@ RFC_1918_RANGES = [
 
 def validate_cidr(cidr: str) -> Tuple[bool, Optional[str]]:
     """
-    Validate CIDR notation
+    Validate CIDR notation for subnets
     
     Args:
         cidr: CIDR string (e.g., "10.128.0.0/20")
@@ -41,6 +41,35 @@ def validate_cidr(cidr: str) -> Tuple[bool, Optional[str]]:
         # Check prefix length (must be between 8 and 29 for GCP)
         if network.prefixlen < 8 or network.prefixlen > 29:
             return False, f"Prefix length must be between /8 and /29, got /{network.prefixlen}"
+        
+        return True, None
+        
+    except ValueError as e:
+        return False, f"Invalid CIDR notation: {str(e)}"
+
+
+def validate_firewall_cidr(cidr: str) -> Tuple[bool, Optional[str]]:
+    """
+    Validate CIDR notation for firewall rules
+    Firewall rules allow /0 (0.0.0.0/0 = any source)
+    
+    Args:
+        cidr: CIDR string (e.g., "10.128.0.0/20" or "0.0.0.0/0")
+        
+    Returns:
+        (is_valid, error_message)
+    """
+    try:
+        network = ipaddress.ip_network(cidr, strict=False)
+        
+        # Check if it's IPv4
+        if not isinstance(network, ipaddress.IPv4Network):
+            return False, "Only IPv4 networks are supported"
+        
+        # For firewalls, allow any prefix length from /0 to /32
+        # /0 means "any source" (0.0.0.0/0)
+        if network.prefixlen < 0 or network.prefixlen > 32:
+            return False, f"Prefix length must be between /0 and /32, got /{network.prefixlen}"
         
         return True, None
         

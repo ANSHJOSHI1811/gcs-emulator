@@ -10,7 +10,7 @@ Validation functions for:
 
 import re
 from typing import Tuple, Optional, List
-from app.utils.ip_utils import validate_cidr, cidr_overlaps, validate_ip_in_range
+from app.utils.ip_utils import validate_cidr, validate_firewall_cidr, cidr_overlaps, validate_ip_in_range
 
 
 # GCP Resource naming pattern (RFC 1035)
@@ -169,14 +169,14 @@ def validate_firewall_rule(name: str, priority: int, direction: str,
     # Validate source ranges (for INGRESS)
     if direction == 'INGRESS' and source_ranges:
         for cidr in source_ranges:
-            is_valid, error = validate_cidr(cidr)
+            is_valid, error = validate_firewall_cidr(cidr)
             if not is_valid:
                 return False, f"Invalid source range: {error}"
     
     # Validate destination ranges (for EGRESS)
     if direction == 'EGRESS' and destination_ranges:
         for cidr in destination_ranges:
-            is_valid, error = validate_cidr(cidr)
+            is_valid, error = validate_firewall_cidr(cidr)
             if not is_valid:
                 return False, f"Invalid destination range: {error}"
     
