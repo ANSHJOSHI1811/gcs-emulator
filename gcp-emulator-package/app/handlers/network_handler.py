@@ -16,6 +16,7 @@ from app.factory import db
 from app.models.vpc import Network, Subnetwork, FirewallRule, FirewallAllowedDenied
 from app.validators.vpc_validators import validate_network_config
 from app.utils.ip_utils import get_auto_subnet_range
+from app.utils.operation_utils import create_operation
 from app.models.compute import Zone
 import uuid
 
@@ -73,7 +74,15 @@ def create_network(project_id):
         
         db.session.commit()
         
-        return jsonify(network.to_dict(project_id)), 201
+        # Create operation
+        operation = create_operation(
+            project_id=project_id,
+            operation_type='insert',
+            target_link=f"http://127.0.0.1:8080/compute/v1/projects/{project_id}/global/networks/{name}",
+            target_id=str(network.id)
+        )
+        
+        return jsonify(operation.to_dict()), 200
         
     except IntegrityError as e:
         db.session.rollback()
@@ -156,11 +165,15 @@ def delete_network(project_id, network_name):
         db.session.delete(network)
         db.session.commit()
         
-        return jsonify({
-            'kind': 'compute#operation',
-            'status': 'DONE',
-            'operationType': 'delete'
-        }), 200
+        # Create operation
+        operation = create_operation(
+            project_id=project_id,
+            operation_type='delete',
+            target_link=f"http://127.0.0.1:8080/compute/v1/projects/{project_id}/global/networks/{network_name}",
+            target_id=str(network.id)
+        )
+        
+        return jsonify(operation.to_dict()), 200
         
     except Exception as e:
         db.session.rollback()

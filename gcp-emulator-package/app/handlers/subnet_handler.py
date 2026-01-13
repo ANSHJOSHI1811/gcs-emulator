@@ -17,6 +17,7 @@ from app.factory import db
 from app.models.vpc import Network, Subnetwork
 from app.models.compute import Zone
 from app.validators.vpc_validators import validate_subnet_config
+from app.utils.operation_utils import create_operation
 from app.utils.ip_utils import (
     validate_cidr,
     is_private_range,

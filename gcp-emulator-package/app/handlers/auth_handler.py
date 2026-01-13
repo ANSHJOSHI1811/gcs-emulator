@@ -226,3 +226,21 @@ def validate_token(token: str) -> dict:
         "email": "emulator-user@gcp-emulator.local",
         "id": "emulator-user-001",
     }
+
+
+@auth_bp.route("/oauth2/token", methods=["POST"])
+def oauth2_token():
+    """
+    OAuth2 token endpoint (Terraform-compatible path).
+    Alias for /token endpoint.
+    """
+    return oauth_token()
+
+
+@auth_bp.route("/oauth2/v2/userinfo", methods=["GET"])
+def oauth2_userinfo():
+    """
+    OAuth2 userinfo endpoint (Terraform-compatible path).
+    Alias for /userinfo endpoint.
+    """
+    return userinfo()
