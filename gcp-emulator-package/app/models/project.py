@@ -18,6 +18,9 @@ class Project(db.Model):
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
     meta = db.Column(JSON, default=dict)
     
+    # Compute Engine API flag
+    compute_api_enabled = db.Column(db.Boolean, default=True)
+    
     # Relationships
     buckets = db.relationship("Bucket", backref="project", lazy=True, cascade="all, delete-orphan")
     

@@ -12,7 +12,7 @@ Models for:
 import uuid
 from datetime import datetime
 from sqlalchemy.dialects.postgresql import UUID, ARRAY, JSONB
-from app.db import db
+from app.factory import db
 
 
 class Network(db.Model):

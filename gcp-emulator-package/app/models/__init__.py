@@ -7,6 +7,7 @@ from app.models.object import Object, ObjectVersion
 from app.models.service_account import ServiceAccount, ServiceAccountKey
 from app.models.iam_policy import IamPolicy, Role
 from app.models.compute import Instance, Zone, MachineType
+from app.models.vpc import Network, Subnetwork, FirewallRule, FirewallAllowedDenied, Route
 
 __all__ = [
     "Project", 
@@ -20,4 +21,9 @@ __all__ = [
     "Instance",
     "Zone",
     "MachineType",
+    "Network",
+    "Subnetwork",
+    "FirewallRule",
+    "FirewallAllowedDenied",
+    "Route",
 ]

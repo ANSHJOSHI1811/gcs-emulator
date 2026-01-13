@@ -96,6 +96,7 @@ def register_blueprints(app: Flask) -> None:
     from app.handlers.auth_handler import auth_bp
     from app.handlers.iam_handler import iam_bp
     from app.handlers.compute_handler import compute_bp
+    from app.routes.network_routes import network_bp
     
     app.register_blueprint(health_bp)
     app.register_blueprint(buckets_bp, url_prefix="/storage/v1/b")
@@ -116,6 +117,9 @@ def register_blueprints(app: Flask) -> None:
     app.register_blueprint(auth_bp)  # OAuth2 mock endpoints
     app.register_blueprint(iam_bp)  # IAM service accounts and policies
     app.register_blueprint(compute_bp)  # Compute Engine instances
+    
+    # VPC Networking
+    app.register_blueprint(network_bp)  # VPC networks
     
     # Register SDK compatibility middleware
     register_sdk_middleware(app)

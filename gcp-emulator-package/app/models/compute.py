@@ -78,6 +78,9 @@ class Instance(db.Model):
     # Network
     internal_ip = db.Column(db.String(15))
     external_ip = db.Column(db.String(15))
+    network_url = db.Column(db.String(500))  # VPC network URL
+    subnetwork_url = db.Column(db.String(500))  # Subnet URL
+    network_tier = db.Column(db.String(50), default="PREMIUM")  # PREMIUM or STANDARD
     
     # Image and disk
     source_image = db.Column(db.String(500))  # Increased for URL format
