@@ -68,11 +68,13 @@ class Subnetwork(db.Model):
     region = db.Column(db.String(50), nullable=False)
     ip_cidr_range = db.Column(db.String(50), nullable=False)
     gateway_address = db.Column(db.String(50))
+    description = db.Column(db.Text)
     private_ip_google_access = db.Column(db.Boolean, default=False)
     enable_flow_logs = db.Column(db.Boolean, default=False)
     secondary_ip_ranges = db.Column(JSONB)
     self_link = db.Column(db.Text)
     creation_timestamp = db.Column(db.DateTime, default=datetime.utcnow)
+    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
     
     # Relationships
     network = db.relationship('Network', back_populates='subnetworks')
@@ -81,6 +83,14 @@ class Subnetwork(db.Model):
         db.UniqueConstraint('network_id', 'name', name='uq_subnetwork_network_name'),
     )
     
+    def get_self_link(self, project_id=None):
+        """Get the selfLink for this subnetwork"""
+        # Get project_id from network
+        from app.models.vpc import Network
+        network = Network.query.get(self.network_id)
+        pid = project_id or network.project_id
+        return f"http://127.0.0.1:8080/compute/v1/projects/{pid}/regions/{self.region}/subnetworks/{self.name}"
+    
     def to_dict(self, project_id=None):
         """Convert to GCP API format"""
         # Get project_id from network
@@ -88,7 +98,7 @@ class Subnetwork(db.Model):
         network = Network.query.get(self.network_id)
         pid = project_id or network.project_id
         
-        self_link = f"http://127.0.0.1:8080/compute/v1/projects/{pid}/regions/{self.region}/subnetworks/{self.name}"
+        self_link = self.get_self_link(pid)
         network_link = f"http://127.0.0.1:8080/compute/v1/projects/{pid}/global/networks/{network.name}"
         
         result = {
@@ -104,6 +114,10 @@ class Subnetwork(db.Model):
             'creationTimestamp': self.creation_timestamp.isoformat() + 'Z',
             'kind': 'compute#subnetwork'
         }
+        
+        # Add description if it exists
+        if self.description:
+            result['description'] = self.description
         
         if self.secondary_ip_ranges:
             result['secondaryIpRanges'] = self.secondary_ip_ranges
