@@ -102,6 +102,7 @@ def register_blueprints(app: Flask) -> None:
     from app.routes.route_routes import route_bp
     from app.routes.address_routes import addresses_bp
     from app.routes.operation_routes import operations_bp
+    from app.routes.router_routes import router_bp
     
     app.register_blueprint(health_bp)
     app.register_blueprint(buckets_bp, url_prefix="/storage/v1/b")
@@ -129,6 +130,7 @@ def register_blueprints(app: Flask) -> None:
     app.register_blueprint(firewall_bp)  # VPC firewall rules
     app.register_blueprint(route_bp)  # VPC routes
     app.register_blueprint(addresses_bp)  # External IP addresses
+    app.register_blueprint(router_bp)  # Cloud Router and Cloud NAT
     app.register_blueprint(operations_bp)  # Operations polling
     
     # Register SDK compatibility middleware
