@@ -1,6 +1,8 @@
 import { useEffect, useState } from 'react';
 import { Lock, Plus, Trash2, RefreshCw, AlertCircle, Shield } from 'lucide-react';
 import { apiClient } from '../api/client';
+import { Modal, ModalFooter, ModalButton } from '../components/Modal';
+import { FormField, Input, Select } from '../components/FormFields';
 
 interface FirewallRule {
   id: string;
@@ -335,179 +337,154 @@ const FirewallsPage = () => {
       </div>
 
       {/* Create Modal */}
-      {showCreateModal && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-lg shadow-xl max-w-2xl w-full max-h-[90vh] overflow-y-auto">
-            <div className="px-6 py-4 border-b border-gray-200">
-              <h2 className="text-lg font-semibold text-gray-900">Create Firewall Rule</h2>
+      <Modal
+        isOpen={showCreateModal}
+        onClose={() => setShowCreateModal(false)}
+        title="Create Firewall Rule"
+        description="Define traffic rules for your VPC network"
+        size="2xl"
+      >
+        <form onSubmit={handleCreate} className="space-y-5">
+          <div className="grid grid-cols-2 gap-4">
+            <div className="col-span-2">
+              <FormField label="Name" required help="Lowercase letters, numbers, and hyphens only">
+                <Input
+                  type="text"
+                  value={formData.name}
+                  onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                  placeholder="allow-http"
+                  pattern="[a-z]([-a-z0-9]*[a-z0-9])?"
+                  required
+                />
+              </FormField>
             </div>
-            <form onSubmit={handleCreate} className="p-6 space-y-4">
-              <div className="grid grid-cols-2 gap-4">
-                <div className="col-span-2">
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Name *
-                  </label>
-                  <input
-                    type="text"
-                    value={formData.name}
-                    onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                    placeholder="allow-http"
-                    pattern="[a-z]([-a-z0-9]*[a-z0-9])?"
-                    required
-                  />
-                </div>
 
-                <div className="col-span-2">
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Network *
-                  </label>
-                  <select
-                    value={formData.network}
-                    onChange={(e) => setFormData({ ...formData, network: e.target.value })}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                    required
-                  >
-                    <option value="">Select a network</option>
-                    {networks.map((network) => (
-                      <option key={network.name} value={network.selfLink}>
-                        {network.name}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Direction *
-                  </label>
-                  <select
-                    value={formData.direction}
-                    onChange={(e) => setFormData({ ...formData, direction: e.target.value })}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                  >
-                    <option value="INGRESS">Ingress (incoming)</option>
-                    <option value="EGRESS">Egress (outgoing)</option>
-                  </select>
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Action *
-                  </label>
-                  <select
-                    value={formData.action}
-                    onChange={(e) => setFormData({ ...formData, action: e.target.value as 'ALLOW' | 'DENY' })}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                  >
-                    <option value="ALLOW">Allow</option>
-                    <option value="DENY">Deny</option>
-                  </select>
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Priority *
-                  </label>
-                  <input
-                    type="number"
-                    value={formData.priority}
-                    onChange={(e) => setFormData({ ...formData, priority: parseInt(e.target.value) })}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                    min="0"
-                    max="65535"
-                    required
-                  />
-                  <p className="mt-1 text-xs text-gray-500">0-65535 (lower = higher priority)</p>
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Protocol *
-                  </label>
-                  <select
-                    value={formData.protocol}
-                    onChange={(e) => setFormData({ ...formData, protocol: e.target.value })}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                  >
-                    <option value="tcp">TCP</option>
-                    <option value="udp">UDP</option>
-                    <option value="icmp">ICMP</option>
-                    <option value="all">All protocols</option>
-                  </select>
-                </div>
-
-                <div className="col-span-2">
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Source IP Ranges *
-                  </label>
-                  <input
-                    type="text"
-                    value={formData.sourceRanges}
-                    onChange={(e) => setFormData({ ...formData, sourceRanges: e.target.value })}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 font-mono"
-                    placeholder="0.0.0.0/0"
-                    required
-                  />
-                  <p className="mt-1 text-xs text-gray-500">
-                    Comma-separated CIDR ranges (e.g., 0.0.0.0/0, 10.0.0.0/8)
-                  </p>
-                </div>
-
-                <div className="col-span-2">
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Ports
-                  </label>
-                  <input
-                    type="text"
-                    value={formData.ports}
-                    onChange={(e) => setFormData({ ...formData, ports: e.target.value })}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 font-mono"
-                    placeholder="80,443,8080-8090"
-                  />
-                  <p className="mt-1 text-xs text-gray-500">
-                    Comma-separated ports or ranges (e.g., 80,443,8080-8090). Leave empty for all ports.
-                  </p>
-                </div>
-
-                <div className="col-span-2">
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Target Tags
-                  </label>
-                  <input
-                    type="text"
-                    value={formData.targetTags}
-                    onChange={(e) => setFormData({ ...formData, targetTags: e.target.value })}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                    placeholder="web-server,app-server"
-                  />
-                  <p className="mt-1 text-xs text-gray-500">
-                    Comma-separated tags. Leave empty to apply to all instances.
-                  </p>
-                </div>
-              </div>
-
-              <div className="flex justify-end gap-3 pt-4 border-t">
-                <button
-                  type="button"
-                  onClick={() => setShowCreateModal(false)}
-                  disabled={createLoading}
-                  className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-50"
+            <div className="col-span-2">
+              <FormField label="Network" required>
+                <Select
+                  value={formData.network}
+                  onChange={(e) => setFormData({ ...formData, network: e.target.value })}
+                  required
                 >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  disabled={createLoading || networks.length === 0}
-                  className="px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700 disabled:opacity-50"
-                >
-                  {createLoading ? 'Creating...' : 'Create'}
-                </button>
-              </div>
-            </form>
+                  <option value="">Select a network</option>
+                  {networks.map((network) => (
+                    <option key={network.name} value={network.selfLink}>
+                      {network.name}
+                    </option>
+                  ))}
+                </Select>
+              </FormField>
+            </div>
+
+            <FormField label="Direction" required>
+              <Select
+                value={formData.direction}
+                onChange={(e) => setFormData({ ...formData, direction: e.target.value })}
+              >
+                <option value="INGRESS">Ingress (incoming)</option>
+                <option value="EGRESS">Egress (outgoing)</option>
+              </Select>
+            </FormField>
+
+            <FormField label="Action" required>
+              <Select
+                value={formData.action}
+                onChange={(e) => setFormData({ ...formData, action: e.target.value as 'ALLOW' | 'DENY' })}
+              >
+                <option value="ALLOW">Allow</option>
+                <option value="DENY">Deny</option>
+              </Select>
+            </FormField>
+
+            <FormField label="Priority" required help="0-65535 (lower = higher priority)">
+              <Input
+                type="number"
+                value={formData.priority}
+                onChange={(e) => setFormData({ ...formData, priority: parseInt(e.target.value) })}
+                min="0"
+                max="65535"
+                required
+              />
+            </FormField>
+
+            <FormField label="Protocol" required>
+              <Select
+                value={formData.protocol}
+                onChange={(e) => setFormData({ ...formData, protocol: e.target.value })}
+              >
+                <option value="tcp">TCP</option>
+                <option value="udp">UDP</option>
+                <option value="icmp">ICMP</option>
+                <option value="all">All protocols</option>
+              </Select>
+            </FormField>
+
+            <div className="col-span-2">
+              <FormField
+                label="Source IP Ranges"
+                required
+                help="Comma-separated CIDR ranges (e.g., 0.0.0.0/0, 10.0.0.0/8)"
+              >
+                <Input
+                  type="text"
+                  value={formData.sourceRanges}
+                  onChange={(e) => setFormData({ ...formData, sourceRanges: e.target.value })}
+                  placeholder="0.0.0.0/0"
+                  className="font-mono"
+                  required
+                />
+              </FormField>
+            </div>
+
+            <div className="col-span-2">
+              <FormField
+                label="Ports"
+                help="Comma-separated ports or ranges (e.g., 80,443,8080-8090). Leave empty for all ports."
+              >
+                <Input
+                  type="text"
+                  value={formData.ports}
+                  onChange={(e) => setFormData({ ...formData, ports: e.target.value })}
+                  placeholder="80,443,8080-8090"
+                  className="font-mono"
+                />
+              </FormField>
+            </div>
+
+            <div className="col-span-2">
+              <FormField
+                label="Target Tags"
+                help="Comma-separated tags. Leave empty to apply to all instances."
+              >
+                <Input
+                  type="text"
+                  value={formData.targetTags}
+                  onChange={(e) => setFormData({ ...formData, targetTags: e.target.value })}
+                  placeholder="web-server,app-server"
+                />
+              </FormField>
+            </div>
           </div>
-        </div>
-      )}
+
+          <ModalFooter>
+            <ModalButton
+              variant="secondary"
+              onClick={() => setShowCreateModal(false)}
+              disabled={createLoading}
+            >
+              Cancel
+            </ModalButton>
+            <ModalButton
+              variant="primary"
+              type="submit"
+              loading={createLoading}
+              disabled={networks.length === 0}
+            >
+              Create
+            </ModalButton>
+          </ModalFooter>
+        </form>
+      </Modal>
     </div>
   );
 };

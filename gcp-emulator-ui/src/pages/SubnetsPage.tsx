@@ -1,6 +1,8 @@
 import { useEffect, useState } from 'react';
 import { Network, Plus, Trash2, RefreshCw, AlertCircle } from 'lucide-react';
 import { apiClient } from '../api/client';
+import { Modal, ModalFooter, ModalButton } from '../components/Modal';
+import { FormField, Input, Select } from '../components/FormFields';
 
 interface Subnet {
   id: string;
@@ -267,124 +269,112 @@ const SubnetsPage = () => {
       </div>
 
       {/* Create Modal */}
-      {showCreateModal && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-lg shadow-xl max-w-md w-full max-h-[90vh] overflow-y-auto">
-            <div className="px-6 py-4 border-b border-gray-200">
-              <h2 className="text-lg font-semibold text-gray-900">Create Subnet</h2>
-            </div>
-            <form onSubmit={handleCreate} className="p-6 space-y-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Name *
-                </label>
-                <input
-                  type="text"
-                  value={formData.name}
-                  onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                  placeholder="my-subnet"
-                  pattern="[a-z]([-a-z0-9]*[a-z0-9])?"
-                  required
-                />
-              </div>
+      <Modal
+        isOpen={showCreateModal}
+        onClose={() => setShowCreateModal(false)}
+        title="Create Subnet"
+        description="Add a new subnet to your VPC network"
+        size="lg"
+      >
+        <form onSubmit={handleCreate} className="space-y-5">
+          <FormField
+            label="Name"
+            required
+            help="Lowercase letters, numbers, and hyphens only"
+          >
+            <Input
+              type="text"
+              value={formData.name}
+              onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+              placeholder="my-subnet"
+              pattern="[a-z]([-a-z0-9]*[a-z0-9])?"
+              required
+            />
+          </FormField>
 
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Network *
-                </label>
-                <select
-                  value={formData.network}
-                  onChange={(e) => setFormData({ ...formData, network: e.target.value })}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                  required
-                >
-                  <option value="">Select a network</option>
-                  {networks.map((network) => (
-                    <option key={network.name} value={network.selfLink}>
-                      {network.name}
-                    </option>
-                  ))}
-                </select>
-                {networks.length === 0 && (
-                  <p className="mt-1 text-xs text-red-600">
-                    No networks available. Create a network first.
-                  </p>
-                )}
-              </div>
+          <FormField
+            label="Network"
+            required
+            error={networks.length === 0 ? 'No networks available. Create a network first.' : undefined}
+          >
+            <Select
+              value={formData.network}
+              onChange={(e) => setFormData({ ...formData, network: e.target.value })}
+              required
+            >
+              <option value="">Select a network</option>
+              {networks.map((network) => (
+                <option key={network.name} value={network.selfLink}>
+                  {network.name}
+                </option>
+              ))}
+            </Select>
+          </FormField>
 
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Region *
-                </label>
-                <select
-                  value={formData.region}
-                  onChange={(e) => setFormData({ ...formData, region: e.target.value })}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                  required
-                >
-                  {regions.map((region) => (
-                    <option key={region} value={region}>
-                      {region}
-                    </option>
-                  ))}
-                </select>
-              </div>
+          <FormField label="Region" required>
+            <Select
+              value={formData.region}
+              onChange={(e) => setFormData({ ...formData, region: e.target.value })}
+              required
+            >
+              {regions.map((region) => (
+                <option key={region} value={region}>
+                  {region}
+                </option>
+              ))}
+            </Select>
+          </FormField>
 
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  IP CIDR Range *
-                </label>
-                <input
-                  type="text"
-                  value={formData.ipCidrRange}
-                  onChange={(e) => setFormData({ ...formData, ipCidrRange: e.target.value })}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 font-mono"
-                  placeholder="10.0.0.0/24"
-                  required
-                />
-                <p className="mt-1 text-xs text-gray-500">
-                  Example: 10.0.0.0/24, 192.168.1.0/24
-                </p>
-              </div>
+          <FormField
+            label="IP CIDR Range"
+            required
+            help="Example: 10.0.0.0/24, 192.168.1.0/24"
+          >
+            <Input
+              type="text"
+              value={formData.ipCidrRange}
+              onChange={(e) => setFormData({ ...formData, ipCidrRange: e.target.value })}
+              placeholder="10.0.0.0/24"
+              className="font-mono"
+              required
+            />
+          </FormField>
 
-              <div className="flex items-start gap-3 p-3 border border-gray-200 rounded-lg">
-                <input
-                  type="checkbox"
-                  id="privateIpGoogleAccess"
-                  checked={formData.privateIpGoogleAccess}
-                  onChange={(e) => setFormData({ ...formData, privateIpGoogleAccess: e.target.checked })}
-                  className="mt-0.5"
-                />
-                <label htmlFor="privateIpGoogleAccess" className="cursor-pointer">
-                  <div className="text-sm font-medium text-gray-900">Private Google Access</div>
-                  <div className="text-xs text-gray-500">
-                    Enable VMs without external IPs to reach Google APIs
-                  </div>
-                </label>
+          <div className="flex items-start gap-3 p-4 border-2 border-gray-200 rounded-xl hover:border-gray-300 transition-all">
+            <input
+              type="checkbox"
+              id="privateIpGoogleAccess"
+              checked={formData.privateIpGoogleAccess}
+              onChange={(e) => setFormData({ ...formData, privateIpGoogleAccess: e.target.checked })}
+              className="mt-0.5 text-blue-600 focus:ring-blue-500"
+            />
+            <label htmlFor="privateIpGoogleAccess" className="cursor-pointer flex-1">
+              <div className="text-sm font-semibold text-gray-900">Private Google Access</div>
+              <div className="text-xs text-gray-600 mt-0.5">
+                Enable VMs without external IPs to reach Google APIs
               </div>
-
-              <div className="flex justify-end gap-3 pt-4">
-                <button
-                  type="button"
-                  onClick={() => setShowCreateModal(false)}
-                  disabled={createLoading}
-                  className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-50"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  disabled={createLoading || networks.length === 0}
-                  className="px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700 disabled:opacity-50"
-                >
-                  {createLoading ? 'Creating...' : 'Create'}
-                </button>
-              </div>
-            </form>
+            </label>
           </div>
-        </div>
-      )}
+
+          <ModalFooter>
+            <ModalButton
+              variant="secondary"
+              onClick={() => setShowCreateModal(false)}
+              disabled={createLoading}
+            >
+              Cancel
+            </ModalButton>
+            <ModalButton
+              variant="primary"
+              type="submit"
+              loading={createLoading}
+              disabled={networks.length === 0}
+            >
+              Create
+            </ModalButton>
+          </ModalFooter>
+        </form>
+      </Modal>
     </div>
   );
 };

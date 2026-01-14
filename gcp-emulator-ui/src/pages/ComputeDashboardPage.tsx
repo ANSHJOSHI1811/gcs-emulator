@@ -1,6 +1,8 @@
 import { useEffect, useState } from 'react';
-import { Cpu, Server, MapPin, Settings, Plus, X, StopCircle, Play, Trash2 } from 'lucide-react';
+import { Cpu, Server, MapPin, Settings, Plus, StopCircle, Play, Trash2 } from 'lucide-react';
 import { apiClient } from '../api/client';
+import { Modal, ModalFooter, ModalButton } from '../components/Modal';
+import { FormField, Input, Select } from '../components/FormFields';
 
 interface Zone {
   id: string;
@@ -454,104 +456,81 @@ const ComputeDashboardPage = () => {
       </div>
 
       {/* Create Instance Modal */}
-      {showCreateModal && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-lg shadow-xl w-full max-w-md p-6">
-            <div className="flex items-center justify-between mb-4">
-              <h2 className="text-xl font-semibold text-gray-900">Create VM Instance</h2>
-              <button
-                onClick={() => setShowCreateModal(false)}
-                className="text-gray-400 hover:text-gray-600"
-              >
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-            
-            <form onSubmit={handleCreateInstance}>
-              <div className="space-y-4">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Instance Name *
-                  </label>
-                  <input
-                    type="text"
-                    required
-                    value={formData.name}
-                    onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                    placeholder="my-instance"
-                    pattern="[a-z0-9-]+"
-                    title="Only lowercase letters, numbers, and hyphens"
-                  />
-                  <p className="text-xs text-gray-500 mt-1">
-                    Lowercase letters, numbers, and hyphens only
-                  </p>
-                </div>
+      <Modal
+        isOpen={showCreateModal}
+        onClose={() => setShowCreateModal(false)}
+        title="Create VM Instance"
+        description="Deploy a new virtual machine instance"
+        size="md"
+      >
+        <form onSubmit={handleCreateInstance} className="space-y-5">
+          <FormField
+            label="Instance Name"
+            required
+            help="Lowercase letters, numbers, and hyphens only"
+          >
+            <Input
+              type="text"
+              required
+              value={formData.name}
+              onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+              placeholder="my-instance"
+              pattern="[a-z0-9-]+"
+            />
+          </FormField>
 
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Zone *
-                  </label>
-                  <select
-                    required
-                    value={formData.zone}
-                    onChange={(e) => setFormData({ ...formData, zone: e.target.value })}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                  >
-                    {zones.map(zone => (
-                      <option key={zone.name} value={zone.name}>
-                        {zone.name} ({zone.region})
-                      </option>
-                    ))}
-                  </select>
-                </div>
+          <FormField label="Zone" required>
+            <Select
+              required
+              value={formData.zone}
+              onChange={(e) => setFormData({ ...formData, zone: e.target.value })}
+            >
+              {zones.map(zone => (
+                <option key={zone.name} value={zone.name}>
+                  {zone.name} ({zone.region})
+                </option>
+              ))}
+            </Select>
+          </FormField>
 
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Machine Type *
-                  </label>
-                  <select
-                    required
-                    value={formData.machineType}
-                    onChange={(e) => setFormData({ ...formData, machineType: e.target.value })}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                  >
-                    <option value="e2-micro">e2-micro (2 vCPUs, 1 GB RAM)</option>
-                    <option value="e2-small">e2-small (2 vCPUs, 2 GB RAM)</option>
-                    <option value="e2-medium">e2-medium (2 vCPUs, 4 GB RAM)</option>
-                    <option value="n1-standard-1">n1-standard-1 (1 vCPU, 3.75 GB RAM)</option>
-                    <option value="n1-standard-2">n1-standard-2 (2 vCPUs, 7.5 GB RAM)</option>
-                    <option value="n1-standard-4">n1-standard-4 (4 vCPUs, 15 GB RAM)</option>
-                  </select>
-                </div>
+          <FormField label="Machine Type" required>
+            <Select
+              required
+              value={formData.machineType}
+              onChange={(e) => setFormData({ ...formData, machineType: e.target.value })}
+            >
+              <option value="e2-micro">e2-micro (2 vCPUs, 1 GB RAM)</option>
+              <option value="e2-small">e2-small (2 vCPUs, 2 GB RAM)</option>
+              <option value="e2-medium">e2-medium (2 vCPUs, 4 GB RAM)</option>
+              <option value="n1-standard-1">n1-standard-1 (1 vCPU, 3.75 GB RAM)</option>
+              <option value="n1-standard-2">n1-standard-2 (2 vCPUs, 7.5 GB RAM)</option>
+              <option value="n1-standard-4">n1-standard-4 (4 vCPUs, 15 GB RAM)</option>
+            </Select>
+          </FormField>
 
-                <div className="bg-gray-50 p-3 rounded-lg">
-                  <p className="text-xs text-gray-600">
-                    <strong>Note:</strong> Instance will be created with Ubuntu 20.04 LTS image and a Docker container will be automatically spawned.
-                  </p>
-                </div>
-              </div>
-
-              <div className="flex gap-3 mt-6">
-                <button
-                  type="button"
-                  onClick={() => setShowCreateModal(false)}
-                  className="flex-1 px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  disabled={createLoading}
-                  className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                >
-                  {createLoading ? 'Creating...' : 'Create'}
-                </button>
-              </div>
-            </form>
+          <div className="bg-blue-50 border-2 border-blue-100 p-4 rounded-xl">
+            <p className="text-xs text-blue-900 font-medium">
+              <strong className="font-bold">Note:</strong> Instance will be created with Ubuntu 20.04 LTS image and a Docker container will be automatically spawned.
+            </p>
           </div>
-        </div>
-      )}
+
+          <ModalFooter>
+            <ModalButton
+              variant="secondary"
+              onClick={() => setShowCreateModal(false)}
+            >
+              Cancel
+            </ModalButton>
+            <ModalButton
+              variant="primary"
+              type="submit"
+              loading={createLoading}
+            >
+              Create
+            </ModalButton>
+          </ModalFooter>
+        </form>
+      </Modal>
     </div>
   );
 };

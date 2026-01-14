@@ -1,6 +1,8 @@
 import { useEffect, useState } from 'react';
 import { Globe, Plus, Trash2, RefreshCw, AlertCircle } from 'lucide-react';
 import { apiClient } from '../api/client';
+import { Modal, ModalFooter, ModalButton } from '../components/Modal';
+import { FormField, Input, Textarea, RadioGroup, Select } from '../components/FormFields';
 
 interface Network {
   id: string;
@@ -228,114 +230,89 @@ const NetworksPage = () => {
       </div>
 
       {/* Create Modal */}
-      {showCreateModal && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-lg shadow-xl max-w-md w-full">
-            <div className="px-6 py-4 border-b border-gray-200">
-              <h2 className="text-lg font-semibold text-gray-900">Create VPC Network</h2>
-            </div>
-            <form onSubmit={handleCreate} className="p-6 space-y-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Name *
-                </label>
-                <input
-                  type="text"
-                  value={formData.name}
-                  onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                  placeholder="my-network"
-                  pattern="[a-z]([-a-z0-9]*[a-z0-9])?"
-                  required
-                />
-                <p className="mt-1 text-xs text-gray-500">
-                  Lowercase letters, numbers, and hyphens
-                </p>
-              </div>
+      <Modal
+        isOpen={showCreateModal}
+        onClose={() => setShowCreateModal(false)}
+        title="Create VPC Network"
+        description="Configure a new virtual private cloud network"
+        size="lg"
+      >
+        <form onSubmit={handleCreate} className="space-y-5">
+          <FormField
+            label="Network Name"
+            required
+            help="Lowercase letters, numbers, and hyphens only"
+          >
+            <Input
+              type="text"
+              value={formData.name}
+              onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+              placeholder="my-network"
+              pattern="[a-z]([-a-z0-9]*[a-z0-9])?"
+              required
+            />
+          </FormField>
 
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Description
-                </label>
-                <textarea
-                  value={formData.description}
-                  onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                  rows={2}
-                  placeholder="Optional description"
-                />
-              </div>
+          <FormField label="Description">
+            <Textarea
+              value={formData.description}
+              onChange={(e) => setFormData({ ...formData, description: e.target.value })}
+              rows={3}
+              placeholder="Optional description for this network"
+            />
+          </FormField>
 
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Subnet creation mode
-                </label>
-                <div className="space-y-2">
-                  <label className="flex items-start gap-3 p-3 border border-gray-200 rounded-lg cursor-pointer hover:bg-gray-50">
-                    <input
-                      type="radio"
-                      checked={formData.autoCreateSubnetworks}
-                      onChange={() => setFormData({ ...formData, autoCreateSubnetworks: true })}
-                      className="mt-0.5"
-                    />
-                    <div>
-                      <div className="text-sm font-medium text-gray-900">Automatic</div>
-                      <div className="text-xs text-gray-500">One subnet per region is automatically created</div>
-                    </div>
-                  </label>
-                  <label className="flex items-start gap-3 p-3 border border-gray-200 rounded-lg cursor-pointer hover:bg-gray-50">
-                    <input
-                      type="radio"
-                      checked={!formData.autoCreateSubnetworks}
-                      onChange={() => setFormData({ ...formData, autoCreateSubnetworks: false })}
-                      className="mt-0.5"
-                    />
-                    <div>
-                      <div className="text-sm font-medium text-gray-900">Custom</div>
-                      <div className="text-xs text-gray-500">You create subnets manually</div>
-                    </div>
-                  </label>
-                </div>
-              </div>
+          <FormField label="Subnet Creation Mode">
+            <RadioGroup
+              name="subnetMode"
+              value={formData.autoCreateSubnetworks}
+              onChange={(value) => setFormData({ ...formData, autoCreateSubnetworks: value })}
+              options={[
+                {
+                  value: 'true',
+                  label: 'Automatic',
+                  description: 'One subnet per region is automatically created'
+                },
+                {
+                  value: 'false',
+                  label: 'Custom',
+                  description: 'You create subnets manually'
+                }
+              ]}
+            />
+          </FormField>
 
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Dynamic routing mode
-                </label>
-                <select
-                  value={formData.routingMode}
-                  onChange={(e) => setFormData({ ...formData, routingMode: e.target.value })}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                >
-                  <option value="REGIONAL">Regional</option>
-                  <option value="GLOBAL">Global</option>
-                </select>
-                <p className="mt-1 text-xs text-gray-500">
-                  Regional: Routes learned by Cloud Router only apply to the region where the router is located
-                </p>
-              </div>
+          <FormField
+            label="Dynamic Routing Mode"
+            help="Regional: Routes learned by Cloud Router only apply to the region where the router is located"
+          >
+            <Select
+              value={formData.routingMode}
+              onChange={(e) => setFormData({ ...formData, routingMode: e.target.value })}
+            >
+              <option value="REGIONAL">Regional</option>
+              <option value="GLOBAL">Global</option>
+            </Select>
+          </FormField>
 
-              <div className="flex justify-end gap-3 pt-4">
-                <button
-                  type="button"
-                  onClick={() => setShowCreateModal(false)}
-                  disabled={createLoading}
-                  className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-50"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  disabled={createLoading}
-                  className="px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700 disabled:opacity-50"
-                >
-                  {createLoading ? 'Creating...' : 'Create'}
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
+          <ModalFooter>
+            <ModalButton
+              variant="secondary"
+              onClick={() => setShowCreateModal(false)}
+              disabled={createLoading}
+            >
+              Cancel
+            </ModalButton>
+            <ModalButton
+              variant="primary"
+              type="submit"
+              loading={createLoading}
+            >
+              Create
+            </ModalButton>
+          </ModalFooter>
+        </form>
+      </Modal>
     </div>
   );
 };
