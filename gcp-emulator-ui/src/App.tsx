@@ -13,6 +13,11 @@ import EventsPage from './pages/EventsPage';
 import SettingsPage from './pages/SettingsPage';
 import IAMDashboardPage from './pages/IAMDashboardPage';
 import ComputeDashboardPage from './pages/ComputeDashboardPage';
+import VPCDashboardPage from './pages/VPCDashboardPage';
+import NetworksPage from './pages/NetworksPage';
+import SubnetsPage from './pages/SubnetsPage';
+import FirewallsPage from './pages/FirewallsPage';
+import RoutesPage from './pages/RoutesPage';
 
 function App() {
   return (
@@ -43,6 +48,15 @@ function App() {
             {/* Compute Engine Service Routes */}
             <Route path="/services/compute-engine">
               <Route index element={<ComputeDashboardPage />} />
+            </Route>
+
+            {/* VPC Network Service Routes */}
+            <Route path="/services/vpc">
+              <Route index element={<VPCDashboardPage />} />
+              <Route path="networks" element={<NetworksPage />} />
+              <Route path="subnets" element={<SubnetsPage />} />
+              <Route path="firewalls" element={<FirewallsPage />} />
+              <Route path="routes" element={<RoutesPage />} />
             </Route>
 
             {/* Legacy Routes - Redirect to new structure */}
