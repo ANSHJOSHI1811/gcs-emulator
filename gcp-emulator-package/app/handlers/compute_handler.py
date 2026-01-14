@@ -313,7 +313,7 @@ def create_instance(project_id, zone_name):
     operation = create_operation(
         project_id=project_id,
         operation_type='insert',
-        target_link=f"http://127.0.0.1:8080/compute/v1/projects/{project_id}/zones/{zone_name}/instances/{instance_name}",
+        target_link=f"http://127.0.0.1:8080/compute/v1/projects/{project_id}/zones/{zone_name}/instances/{name}",
         target_id=str(instance.id),
         zone=zone_name
     )
@@ -331,6 +331,83 @@ def list_instances(project_id, zone_name):
     return jsonify({
         "kind": "compute#instanceList",
         "items": [inst.to_dict(project_id) for inst in instances]
+    })
+
+
+@compute_bp.route("/compute/v1/projects/<project_id>/global/images", methods=["GET"])
+def list_images(project_id):
+    """List images in a project"""
+    # Return a mock list of common images
+    images = [
+        {
+            "kind": "compute#image",
+            "id": "1",
+            "name": "debian-11",
+            "description": "Debian 11 (bullseye)",
+            "selfLink": f"http://127.0.0.1:8080/compute/v1/projects/{project_id}/global/images/debian-11",
+            "sourceType": "RAW",
+            "status": "READY",
+            "diskSizeGb": "10",
+            "family": "debian-11"
+        },
+        {
+            "kind": "compute#image",
+            "id": "2",
+            "name": "ubuntu-2004-lts",
+            "description": "Ubuntu 20.04 LTS",
+            "selfLink": f"http://127.0.0.1:8080/compute/v1/projects/{project_id}/global/images/ubuntu-2004-lts",
+            "sourceType": "RAW",
+            "status": "READY",
+            "diskSizeGb": "10",
+            "family": "ubuntu-2004-lts"
+        },
+        {
+            "kind": "compute#image",
+            "id": "3",
+            "name": "centos-7",
+            "description": "CentOS 7",
+            "selfLink": f"http://127.0.0.1:8080/compute/v1/projects/{project_id}/global/images/centos-7",
+            "sourceType": "RAW",
+            "status": "READY",
+            "diskSizeGb": "10",
+            "family": "centos-7"
+        }
+    ]
+    
+    return jsonify({
+        "kind": "compute#imageList",
+        "items": images
+    })
+
+
+@compute_bp.route("/compute/v1/projects/<project_id>/zones/<zone_name>/disks", methods=["GET"])
+def list_disks(project_id, zone_name):
+    """List persistent disks in a zone"""
+    # Get all instances in the zone and return their disk info
+    instances = Instance.query.filter_by(
+        project_id=project_id,
+        zone=zone_name
+    ).all()
+    
+    disks = []
+    for instance in instances:
+        disk = {
+            "kind": "compute#disk",
+            "id": str(hash(f"{instance.id}-disk")),
+            "name": f"{instance.name}-disk",
+            "zone": f"projects/{project_id}/zones/{zone_name}",
+            "status": "READY",
+            "sizeGb": str(instance.disk_size_gb),
+            "type": f"projects/{project_id}/zones/{zone_name}/diskTypes/pd-standard",
+            "selfLink": f"http://127.0.0.1:8080/compute/v1/projects/{project_id}/zones/{zone_name}/disks/{instance.name}-disk",
+            "sourceImage": instance.source_image,
+            "users": [f"projects/{project_id}/zones/{zone_name}/instances/{instance.name}"]
+        }
+        disks.append(disk)
+    
+    return jsonify({
+        "kind": "compute#diskList",
+        "items": disks
     })
 
 

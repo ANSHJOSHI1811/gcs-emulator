@@ -66,11 +66,10 @@ def list_service_accounts(project_id):
     })
 
 
-@iam_bp.route("/v1/<path:resource_name>", methods=["GET"])
-def get_service_account(resource_name):
-    """Get a service account by resource name"""
-    if not resource_name.startswith("projects/") or "/serviceAccounts/" not in resource_name:
-        return error_response(400, "INVALID_ARGUMENT", "Invalid resource name")
+@iam_bp.route("/v1/projects/<project_id>/serviceAccounts/<email>", methods=["GET"])
+def get_service_account(project_id, email):
+    """Get a service account by email"""
+    resource_name = f"projects/{project_id}/serviceAccounts/{email}"
     
     sa = ServiceAccount.query.filter_by(id=resource_name).first()
     if not sa:
@@ -79,11 +78,10 @@ def get_service_account(resource_name):
     return jsonify(sa.to_dict())
 
 
-@iam_bp.route("/v1/<path:resource_name>", methods=["DELETE"])
-def delete_service_account(resource_name):
+@iam_bp.route("/v1/projects/<project_id>/serviceAccounts/<email>", methods=["DELETE"])
+def delete_service_account(project_id, email):
     """Delete a service account"""
-    if not resource_name.startswith("projects/") or "/serviceAccounts/" not in resource_name:
-        return error_response(400, "INVALID_ARGUMENT", "Invalid resource name")
+    resource_name = f"projects/{project_id}/serviceAccounts/{email}"
     
     sa = ServiceAccount.query.filter_by(id=resource_name).first()
     if not sa:
@@ -97,11 +95,10 @@ def delete_service_account(resource_name):
 
 # ========== Service Account Keys ==========
 
-@iam_bp.route("/v1/<path:resource_name>/keys", methods=["POST"])
-def create_service_account_key(resource_name):
+@iam_bp.route("/v1/projects/<project_id>/serviceAccounts/<email>/keys", methods=["POST"])
+def create_service_account_key(project_id, email):
     """Create a service account key"""
-    if not resource_name.startswith("projects/") or "/serviceAccounts/" not in resource_name:
-        return error_response(400, "INVALID_ARGUMENT", "Invalid resource name")
+    resource_name = f"projects/{project_id}/serviceAccounts/{email}"
     
     sa = ServiceAccount.query.filter_by(id=resource_name).first()
     if not sa:
@@ -141,11 +138,10 @@ def create_service_account_key(resource_name):
     return jsonify(key.to_dict(include_private=True)), 201
 
 
-@iam_bp.route("/v1/<path:resource_name>/keys", methods=["GET"])
-def list_service_account_keys(resource_name):
+@iam_bp.route("/v1/projects/<project_id>/serviceAccounts/<email>/keys", methods=["GET"])
+def list_service_account_keys(project_id, email):
     """List service account keys"""
-    if not resource_name.startswith("projects/") or "/serviceAccounts/" not in resource_name:
-        return error_response(400, "INVALID_ARGUMENT", "Invalid resource name")
+    resource_name = f"projects/{project_id}/serviceAccounts/{email}"
     
     sa = ServiceAccount.query.filter_by(id=resource_name).first()
     if not sa:
@@ -156,11 +152,10 @@ def list_service_account_keys(resource_name):
     })
 
 
-@iam_bp.route("/v1/<path:key_name>", methods=["DELETE"])
-def delete_service_account_key(key_name):
+@iam_bp.route("/v1/projects/<project_id>/serviceAccounts/<email>/keys/<key_id>", methods=["DELETE"])
+def delete_service_account_key(project_id, email, key_id):
     """Delete a service account key"""
-    if "/keys/" not in key_name:
-        return error_response(400, "INVALID_ARGUMENT", "Invalid key name")
+    key_name = f"projects/{project_id}/serviceAccounts/{email}/keys/{key_id}"
     
     key = ServiceAccountKey.query.filter_by(id=key_name).first()
     if not key:

@@ -123,7 +123,7 @@ def register_blueprints(app: Flask) -> None:
     
     # New: IAM and Compute Engine
     app.register_blueprint(auth_bp)  # OAuth2 mock endpoints
-    app.register_blueprint(iam_bp)  # IAM service accounts and policies
+    app.register_blueprint(iam_bp, url_prefix="/iam")  # IAM service accounts and policies
     app.register_blueprint(compute_bp)  # Compute Engine instances
     
     # VPC Networking
