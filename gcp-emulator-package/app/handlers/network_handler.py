@@ -23,6 +23,115 @@ import docker
 import ipaddress
 
 
+# Docker client (initialized lazily)
+_docker_client = None
+
+def get_docker_client():
+    """Get or initialize Docker client"""
+    global _docker_client
+    if _docker_client is None:
+        try:
+            _docker_client = docker.from_env()
+        except Exception as e:
+            print(f"Warning: Docker not available: {e}")
+            _docker_client = None
+    return _docker_client
+
+
+def _create_docker_network_for_vpc(network_name, project_id, subnet_cidr=None):
+    """
+    Create a Docker network for the VPC network.
+    This allows containers (instances) to communicate within the same VPC.
+    
+    Returns: (docker_network_id, docker_network_name) or (None, None) if failed
+    """
+    client = get_docker_client()
+    if not client:
+        return None, None
+    
+    try:
+        # Create unique Docker network name
+        docker_net_name = f"gcp-vpc-{project_id}-{network_name}".replace('_', '-')[:63]
+        
+        # Check if network already exists
+        try:
+            existing = client.networks.get(docker_net_name)
+            return existing.id, docker_net_name
+        except docker.errors.NotFound:
+            pass
+        
+        # Configure Docker network with subnet if provided
+        ipam_config = None
+        if subnet_cidr:
+            try:
+                # Use first subnet's CIDR for Docker network
+                ipam_pool = docker.types.IPAMPool(
+                    subnet=subnet_cidr,
+                    gateway=str(ipaddress.ip_network(subnet_cidr, strict=False).network_address + 1)
+                )
+                ipam_config = docker.types.IPAMConfig(pool_configs=[ipam_pool])
+            except Exception as e:
+                print(f"Warning: Failed to configure IPAM for Docker network: {e}")
+        
+        # Create Docker bridge network
+        docker_network = client.networks.create(
+            name=docker_net_name,
+            driver="bridge",
+            labels={
+                "gcp-emulator": "true",
+                "vpc-network": network_name,
+                "project": project_id,
+            },
+            ipam=ipam_config,
+            check_duplicate=True
+        )
+        
+        print(f"✓ Created Docker network '{docker_net_name}' for VPC '{network_name}'")
+        return docker_network.id, docker_net_name
+        
+    except Exception as e:
+        print(f"Warning: Failed to create Docker network for VPC: {e}")
+        return None, None
+
+
+def _delete_docker_network(docker_network_id, docker_network_name):
+    """
+    Delete the Docker network associated with a VPC network.
+    """
+    client = get_docker_client()
+    if not client or not docker_network_id:
+        return
+    
+    try:
+        # Try to get network by ID first
+        try:
+            network = client.networks.get(docker_network_id)
+        except docker.errors.NotFound:
+            # Try by name
+            if docker_network_name:
+                try:
+                    network = client.networks.get(docker_network_name)
+                except docker.errors.NotFound:
+                    return
+            else:
+                return
+        
+        # Disconnect all containers first
+        network.reload()
+        for container in network.containers:
+            try:
+                network.disconnect(container, force=True)
+            except Exception as e:
+                print(f"Warning: Failed to disconnect container {container.name}: {e}")
+        
+        # Remove the network
+        network.remove()
+        print(f"✓ Deleted Docker network '{docker_network_name}'")
+        
+    except Exception as e:
+        print(f"Warning: Failed to delete Docker network: {e}")
+
+
 def create_network(project_id):
     """
     Create a new VPC network
