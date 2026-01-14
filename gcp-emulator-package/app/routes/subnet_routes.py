@@ -12,7 +12,7 @@ GCP-compatible endpoints:
 """
 
 from flask import Blueprint
-from app.handlers import subnet_handler
+from app.handlers import subnet_handler, private_access_handler
 
 subnet_bp = Blueprint("subnetworks", __name__)
 
@@ -57,3 +57,15 @@ def expand_subnet(project_id: str, region: str, subnet_name: str):
 def patch_subnet(project_id: str, region: str, subnet_name: str):
     """Update subnetwork properties"""
     return subnet_handler.patch_subnetwork(project_id, region, subnet_name)
+
+
+@subnet_bp.route("/compute/v1/projects/<project_id>/regions/<region>/subnetworks/<subnet_name>/setPrivateIpGoogleAccess", methods=["POST"])
+def set_private_google_access(project_id: str, region: str, subnet_name: str):
+    """Enable/disable Private Google Access for a subnetwork"""
+    return private_access_handler.enable_private_google_access(project_id, region, subnet_name)
+
+
+@subnet_bp.route("/compute/v1/projects/<project_id>/regions/<region>/subnetworks/<subnet_name>/getPrivateIpGoogleAccess", methods=["GET"])
+def get_private_google_access(project_id: str, region: str, subnet_name: str):
+    """Get Private Google Access status for a subnetwork"""
+    return private_access_handler.get_private_google_access_status(project_id, region, subnet_name)
