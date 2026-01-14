@@ -29,6 +29,10 @@ class Network(db.Model):
     self_link = db.Column(db.Text)
     creation_timestamp = db.Column(db.DateTime, default=datetime.utcnow)
     
+    # Docker integration
+    docker_network_id = db.Column(db.String(255))  # Docker network ID for container networking
+    docker_network_name = db.Column(db.String(255))  # Docker network name
+    
     # Relationships
     subnetworks = db.relationship('Subnetwork', back_populates='network', cascade='all, delete-orphan')
     firewall_rules = db.relationship('FirewallRule', back_populates='network', cascade='all, delete-orphan')

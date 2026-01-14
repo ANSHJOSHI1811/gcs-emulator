@@ -215,17 +215,30 @@ def create_instance(project_id, zone_name):
             elif "alpine" in source_image.lower():
                 docker_image = "alpine:latest"
             
-            # Create container
+            # Get VPC network for Docker network attachment
+            docker_network = None
+            if network_interfaces and len(network_interfaces) > 0:
+                network_url = network_interfaces[0].get('network', '')
+                # Extract network name from URL like "global/networks/default"
+                if 'networks/' in network_url:
+                    network_name = network_url.split('networks/')[-1]
+                    vpc_network = Network.query.filter_by(project_id=project_id, name=network_name).first()
+                    if vpc_network and vpc_network.docker_network_name:
+                        docker_network = vpc_network.docker_network_name
+            
+            # Create container with VPC network attachment
             container = client.containers.run(
                 docker_image,
                 name=container_name,
                 detach=True,
                 command="tail -f /dev/null",  # Keep container running
+                network=docker_network,  # Attach to VPC Docker network
                 labels={
                     "gcp-emulator": "true",
                     "project": project_id,
                     "zone": zone_name,
                     "instance": name,
+                    "vpc-network": docker_network or "default",
                 },
                 remove=False,
             )

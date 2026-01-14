@@ -19,6 +19,8 @@ from app.utils.ip_utils import get_auto_subnet_range
 from app.utils.operation_utils import create_operation
 from app.models.compute import Zone
 import uuid
+import docker
+import ipaddress
 
 
 def create_network(project_id):
@@ -68,6 +70,20 @@ def create_network(project_id):
         # If auto mode, create subnets in all regions
         if auto_create_subnetworks:
             _create_auto_subnets(network.id, project_id)
+        
+        # Create Docker network for VPC (for container networking)
+        # Use first subnet's CIDR if available, otherwise use default
+        subnet_cidr = None
+        if auto_create_subnetworks:
+            # Get first subnet for Docker network CIDR
+            first_subnet = Subnetwork.query.filter_by(network_id=network.id).first()
+            if first_subnet:
+                subnet_cidr = first_subnet.ip_cidr_range
+        
+        docker_net_id, docker_net_name = _create_docker_network_for_vpc(name, project_id, subnet_cidr)
+        if docker_net_id:
+            network.docker_network_id = docker_net_id
+            network.docker_network_name = docker_net_name
         
         # Create default firewall rules
         _create_default_firewall_rules(network.id, project_id)
@@ -148,6 +164,10 @@ def delete_network(project_id, network_name):
                     'message': f'Network {network_name} not found'
                 }
             }), 404
+        
+        # Delete associated Docker network
+        if network.docker_network_id:
+            _delete_docker_network(network.docker_network_id, network.docker_network_name)
         
         # Check if network is in use by instances
         from app.models.compute import Instance
