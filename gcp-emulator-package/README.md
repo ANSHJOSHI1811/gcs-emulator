@@ -1,17 +1,46 @@
 # GCS Emulator - LocalStack for Google Cloud Storage
 
-A production-ready **Google Cloud Storage (GCS) emulator** that runs locally, similar to LocalStack but specifically designed for GCP Storage. Built with Flask and PostgreSQL, it provides full compatibility with the official Google Cloud Storage Python SDK.
+A production-ready **Google Cloud Platform (GCP) emulator** that runs locally, similar to LocalStack but specifically designed for GCP. Built with Flask and PostgreSQL, it provides full compatibility with the official Google Cloud SDKs and gcloud CLI.
+
+## ⭐ NEW: Proxy Mode - Use Real GCP APIs!
+
+**3 operating modes in 1 emulator:**
+- 🏠 **LOCAL_ONLY** - Standalone simulator (free, offline)
+- 🔀 **PROXY** - Hybrid: Mix local + real GCP (smart routing)
+- 📡 **PASSTHROUGH** - Full GCP proxy (debugging)
+
+> 📖 **Quick Start**: See [`PROXY_QUICKSTART.md`](../PROXY_QUICKSTART.md)  
+> 📚 **Full Guide**: See [`docs/PROXY_MODE.md`](docs/PROXY_MODE.md)
 
 ## ✨ Features
 
+### Storage API
 - ✅ **Full GCS API v1 Compatibility** - All 9 core endpoints implemented
 - ✅ **Official SDK Support** - Works with `google-cloud-storage` library
 - ✅ **PostgreSQL Database** - Persistent metadata storage
 - ✅ **File Storage** - Local filesystem for object storage
-- ✅ **Mock Authentication** - No real GCP credentials needed
 - ✅ **Prefix & Delimiter** - Folder simulation support
 - ✅ **Hash Verification** - MD5 and CRC32C checksums
+- ✅ **Object Versioning** - Full generation support
+
+### IAM API
+- ✅ **Service Accounts** - Create, list, get, update, delete
+- ✅ **Service Account Keys** - JSON/P12 key generation
+- ✅ **IAM Policies** - Get, set, test permissions
+- ✅ **Roles** - Predefined and custom roles
+- ✅ **gcloud CLI Compatible** - All `gcloud iam` commands work
+
+### NEW: Proxy Mode
+- ✅ **Intelligent Routing** - Route APIs to local or GCP
+- ✅ **Real Authentication** - Uses google-auth for GCP calls
+- ✅ **Pattern-Based** - Route by API or resource pattern
+- ✅ **Request Logging** - See all API calls in real-time
+- ✅ **Zero Code Changes** - Configure via env vars only
+
+### Infrastructure
 - ✅ **Production-Ready** - Alembic migrations, error handling, logging
+- ✅ **Mock Authentication** - No real GCP credentials needed (local mode)
+- ✅ **CLI Tools** - Flask CLI + gcloud compatibility
 
 ## 🚀 Quick Start
 

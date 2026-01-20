@@ -14,3 +14,11 @@ def cli(app: Flask):
         from app.factory import db
         db.create_all()
         click.echo("Database initialized.")
+    
+    # Register IAM CLI commands
+    try:
+        from app.cli_commands.iam_commands import register_iam_commands
+        register_iam_commands(app)
+    except ImportError:
+        # IAM commands not available
+        pass

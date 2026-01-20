@@ -3,15 +3,16 @@ Object handlers - Flask routes for object operations with versioning support
 """
 from flask import Blueprint, request, jsonify, send_file
 from io import BytesIO
-from app.services.object_versioning_service import ObjectVersioningService
+from app.services.object_versioning_service import ObjectVersioningService, PreconditionFailedError
 from app.services.object_service import ObjectService
 from app.validators.object_validators import is_valid_object_name
 from app.models.bucket import Bucket
 from app.models.object import ObjectVersion
 from app.utils.gcs_errors import (
-    not_found_error, 
-    invalid_argument_error, 
-    internal_error
+    not_found_error,
+    invalid_argument_error,
+    internal_error,
+    precondition_failed_error
 )
 from app.utils.iam_enforcer import require_permission
 
@@ -95,6 +96,45 @@ def upload_object(bucket):
             return invalid_argument_error("Empty file content")
         
         content_type = request.headers.get("Content-Type", "application/octet-stream")
+
+        # Support GCS JSON API preconditions via query params and headers
+        def _get_int_arg(name: str, header_name: str, alt_header_names: list = None):
+            val = request.args.get(name)
+            if val is None:
+                # Try primary header
+                val = request.headers.get(header_name)
+            if val is None and alt_header_names:
+                # Try alternate header names commonly used by clients
+                for hn in alt_header_names:
+                    v = request.headers.get(hn)
+                    if v is not None:
+                        val = v
+                        break
+            try:
+                return int(val) if val is not None and str(val).strip() != '' else None
+            except (ValueError, TypeError):
+                return None
+
+        if_generation_match = _get_int_arg(
+            "ifGenerationMatch",
+            "If-Generation-Match",
+            ["x-goog-if-generation-match", "X-Goog-If-Generation-Match"]
+        )
+        if_generation_not_match = _get_int_arg(
+            "ifGenerationNotMatch",
+            "If-Generation-Not-Match",
+            ["x-goog-if-generation-not-match", "X-Goog-If-Generation-Not-Match"]
+        )
+        if_metageneration_match = _get_int_arg(
+            "ifMetagenerationMatch",
+            "If-Metageneration-Match",
+            ["x-goog-if-metageneration-match", "X-Goog-If-Metageneration-Match"]
+        )
+        if_metageneration_not_match = _get_int_arg(
+            "ifMetagenerationNotMatch",
+            "If-Metageneration-Not-Match",
+            ["x-goog-if-metageneration-not-match", "X-Goog-If-Metageneration-Not-Match"]
+        )
         
         # Check if bucket has versioning enabled
         bucket_obj = Bucket.query.filter_by(name=bucket).first()
@@ -107,7 +147,11 @@ def upload_object(bucket):
             bucket_name=bucket,
             object_name=object_name,
             content=content,
-            content_type=content_type
+            content_type=content_type,
+            if_generation_match=if_generation_match,
+            if_generation_not_match=if_generation_not_match,
+            if_metageneration_match=if_metageneration_match,
+            if_metageneration_not_match=if_metageneration_not_match
         )
         
         # Trigger notifications for upload event
@@ -120,6 +164,8 @@ def upload_object(bucket):
         )
         
         return jsonify(obj.to_dict()), 201
+    except PreconditionFailedError as e:
+        return precondition_failed_error(str(e))
     except ValueError as e:
         error_msg = str(e)
         if "not found" in error_msg.lower():
@@ -154,8 +200,7 @@ def get_object(bucket, object_name):
             return send_file(
                 BytesIO(content),
                 mimetype=version.content_type,
-                as_attachment=True,
-                download_name=object_name
+                as_attachment=False
             ), 200
         else:
             # Return metadata
@@ -201,6 +246,50 @@ def delete_object(bucket, object_name):
             )
         
         return "", 204
+    except ValueError as e:
+        error_msg = str(e)
+        if "not found" in error_msg.lower():
+            if "bucket" in error_msg.lower():
+                return not_found_error(bucket, "bucket")
+            else:
+                return not_found_error(object_name, "object")
+        return invalid_argument_error(error_msg)
+    except Exception as e:
+        return internal_error(f"Internal server error: {str(e)}")
+
+
+@objects_bp.route("/<bucket>/o/<path:object_name>", methods=["PATCH"])
+def patch_object(bucket, object_name):
+    """
+    Update object metadata with metageneration preconditions
+    PATCH /storage/v1/b/{bucket}/o/{object}?ifMetagenerationMatch=1
+    Body: {"metadata": {...}}
+    """
+    try:
+        data = request.get_json() or {}
+        metadata = data.get("metadata", {})
+
+        def _get_int_arg(name: str, header_name: str):
+            val = request.args.get(name)
+            if val is None:
+                val = request.headers.get(header_name)
+            try:
+                return int(val) if val is not None and str(val).strip() != '' else None
+            except (ValueError, TypeError):
+                return None
+
+        if_metageneration_match = _get_int_arg("ifMetagenerationMatch", "If-Metageneration-Match")
+
+        from app.services.object_versioning_service import ObjectVersioningService
+        obj = ObjectVersioningService.update_object_metadata(
+            bucket_name=bucket,
+            object_name=object_name,
+            metadata=metadata,
+            if_metageneration_match=if_metageneration_match,
+        )
+        return jsonify(obj.to_dict()), 200
+    except PreconditionFailedError as e:
+        return precondition_failed_error(str(e))
     except ValueError as e:
         error_msg = str(e)
         if "not found" in error_msg.lower():

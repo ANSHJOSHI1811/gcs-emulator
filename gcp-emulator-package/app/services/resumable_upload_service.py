@@ -22,7 +22,7 @@ class ResumableUploadService:
     """Service for resumable upload operations"""
     
     STORAGE_PATH = os.getenv("STORAGE_PATH", "./storage")
-    TMP_PATH = os.path.join(STORAGE_PATH, "tmp")
+    TMP_PATH = str(Path(STORAGE_PATH) / "tmp")
     
     @staticmethod
     def initiate_session(

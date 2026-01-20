@@ -13,7 +13,7 @@ class LifecycleRule(db.Model):
     __tablename__ = "lifecycle_rules"
     
     rule_id = db.Column(db.String(255), primary_key=True, default=lambda: str(uuid.uuid4()))
-    bucket_name = db.Column(db.String(63), db.ForeignKey("buckets.id", ondelete="CASCADE"), nullable=False, index=True)
+    bucket_id = db.Column(db.String(63), db.ForeignKey("buckets.id", ondelete="CASCADE"), nullable=False, index=True)
     action = db.Column(db.String(20), nullable=False)  # Delete or Archive
     age_days = db.Column(db.Integer, nullable=False)
     created_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)

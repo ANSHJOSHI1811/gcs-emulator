@@ -11,6 +11,7 @@ from app.models.object import Object, ObjectVersion
 from app.models.bucket import Bucket
 from app.utils.hashing import calculate_md5, calculate_crc32c
 from app.services.object_event_service import ObjectEventService, EventType
+from app.logging import log_service_stage
 
 
 class PreconditionFailedError(Exception):
@@ -67,7 +68,35 @@ class ObjectVersioningService:
             deleted=False
         ).first()
         
-        # Validate preconditions
+        # Validate preconditions (early inline enforcement for robustness)
+        if existing_obj is None:
+            if if_generation_match is not None and if_generation_match != 0:
+                raise PreconditionFailedError(
+                    f"Precondition failed: object does not exist (ifGenerationMatch={if_generation_match})"
+                )
+            if if_metageneration_match is not None:
+                raise PreconditionFailedError(
+                    f"Precondition failed: object does not exist (ifMetagenerationMatch={if_metageneration_match})"
+                )
+        else:
+            if if_generation_match is not None and existing_obj.generation != if_generation_match:
+                raise PreconditionFailedError(
+                    f"Precondition failed: generation {existing_obj.generation} != {if_generation_match}"
+                )
+            if if_generation_not_match is not None and existing_obj.generation == if_generation_not_match:
+                raise PreconditionFailedError(
+                    f"Precondition failed: generation {existing_obj.generation} == {if_generation_not_match}"
+                )
+            if if_metageneration_match is not None and existing_obj.metageneration != if_metageneration_match:
+                raise PreconditionFailedError(
+                    f"Precondition failed: metageneration {existing_obj.metageneration} != {if_metageneration_match}"
+                )
+            if if_metageneration_not_match is not None and existing_obj.metageneration == if_metageneration_not_match:
+                raise PreconditionFailedError(
+                    f"Precondition failed: metageneration {existing_obj.metageneration} == {if_metageneration_not_match}"
+                )
+
+        # Secondary validation via helper for future extensions
         ObjectVersioningService._validate_preconditions(
             existing_obj,
             if_generation_match,
@@ -119,9 +148,6 @@ class ObjectVersioningService:
             existing_obj.crc32c_hash = crc32c_hash
             existing_obj.file_path = file_path
             existing_obj.is_latest = True  # Ensure it stays latest
-            existing_obj.updated_at = datetime.utcnow()
-            obj = existing_obj
-            existing_obj.file_path = file_path
             existing_obj.updated_at = datetime.utcnow()
             obj = existing_obj
         else:
@@ -411,6 +437,23 @@ class ObjectVersioningService:
         Raises:
             PreconditionFailedError: If any precondition fails
         """
+        # Log inputs for visibility
+        try:
+            log_service_stage(
+                message="Validate preconditions",
+                details={
+                    "existing": bool(existing_obj),
+                    "current_generation": (existing_obj.generation if existing_obj else None),
+                    "current_metageneration": (existing_obj.metageneration if existing_obj else None),
+                    "if_generation_match": if_generation_match,
+                    "if_generation_not_match": if_generation_not_match,
+                    "if_metageneration_match": if_metageneration_match,
+                    "if_metageneration_not_match": if_metageneration_not_match,
+                }
+            )
+        except Exception:
+            pass
+
         if existing_obj is None:
             # Object doesn't exist
             if if_generation_match is not None and if_generation_match != 0:

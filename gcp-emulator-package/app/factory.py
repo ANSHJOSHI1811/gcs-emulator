@@ -16,6 +16,25 @@ from flask_sqlalchemy import SQLAlchemy
 
 db = SQLAlchemy()
 
+
+def setup_proxy_middleware(app: Flask) -> None:
+    """Setup proxy middleware for routing to GCP."""
+    try:
+        from app.proxy.middleware import add_proxy_middleware
+        from app.proxy.config import proxy_config, ProxyMode
+        
+        if proxy_config.mode != ProxyMode.LOCAL_ONLY:
+            add_proxy_middleware(app)
+            app.config['PROXY_ENABLED'] = True
+            app.logger.info(f"Proxy mode enabled: {proxy_config.mode.value}")
+        else:
+            app.config['PROXY_ENABLED'] = False
+            app.logger.info("Running in local-only mode (no proxy)")
+    except Exception as e:
+        app.logger.warning(f"Could not setup proxy middleware: {e}")
+        app.config['PROXY_ENABLED'] = False
+
+
 def create_app(config_name: str = None) -> Flask:
     """
     Create and configure Flask application
@@ -47,6 +66,9 @@ def create_app(config_name: str = None) -> Flask:
     # Setup request logging middleware
     setup_request_logging(app)
     
+    # Add proxy middleware (if enabled)
+    setup_proxy_middleware(app)
+    
     # Register blueprints
     register_blueprints(app)
     
@@ -59,11 +81,23 @@ def create_app(config_name: str = None) -> Flask:
     # Create application context and initialize database
     with app.app_context():
         db.create_all()
+        
+        # Seed predefined IAM roles
+        from app.services.iam_service import RoleService
+        role_service = RoleService()
+        role_service.seed_predefined_roles()
     
     # Start lifecycle executor background service
     lifecycle_interval = int(os.getenv("LIFECYCLE_INTERVAL_MINUTES", "5"))
     from app.services.lifecycle_executor import start_lifecycle_executor
     start_lifecycle_executor(app, interval_minutes=lifecycle_interval)
+    
+    # PHASE 1: Start compute sync worker (only runs if not in reloader mode)
+    if os.environ.get('WERKZEUG_RUN_MAIN') == 'true' or not app.debug:
+        compute_service = app.config.get('COMPUTE_SERVICE')
+        if compute_service:
+            from app.services.compute_sync_worker import start_compute_sync_worker
+            start_compute_sync_worker(app, compute_service, interval=5)
     
     return app
 
@@ -148,6 +182,10 @@ def register_sdk_middleware(app: Flask) -> None:
     @app.before_request
     def handle_sdk_auth():
         """Handle SDK authentication headers in mock mode"""
+        # Proxy mode uses real auth - skip mock auth
+        if app.config.get('PROXY_ENABLED', False):
+            return
+        
         if app.config.get('MOCK_AUTH_ENABLED', True):
             # Log SDK authentication attempts (for debugging)
             auth_header = request.headers.get('Authorization')
