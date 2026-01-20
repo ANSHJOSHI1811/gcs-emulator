@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Cpu, Server, MapPin, Settings, Plus, StopCircle, Play, Trash2 } from 'lucide-react';
+import { Cpu, Server, MapPin, Settings, Plus, StopCircle, Play, Trash2, Search } from 'lucide-react';
 import { apiClient } from '../api/client';
 import { Modal, ModalFooter, ModalButton } from '../components/Modal';
 import { FormField, Input, Select } from '../components/FormFields';
@@ -45,6 +45,8 @@ const ComputeDashboardPage = () => {
   const [loading, setLoading] = useState(true);
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [createLoading, setCreateLoading] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [statusFilter, setStatusFilter] = useState('all');
   const [formData, setFormData] = useState({
     name: '',
     zone: 'us-central1-a',
