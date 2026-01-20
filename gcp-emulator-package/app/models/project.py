@@ -12,10 +12,14 @@ class Project(db.Model):
     
     id = db.Column(db.String(63), primary_key=True)
     name = db.Column(db.String(255), nullable=False)
+    project_number = db.Column(db.BigInteger, nullable=True)  # Numeric project number
     location = db.Column(db.String(50), default="US")
     created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
     meta = db.Column(JSON, default=dict)
+    
+    # Compute Engine API flag
+    compute_api_enabled = db.Column(db.Boolean, default=True)
     
     # Relationships
     buckets = db.relationship("Bucket", backref="project", lazy=True, cascade="all, delete-orphan")
@@ -28,6 +32,7 @@ class Project(db.Model):
         return {
             "id": self.id,
             "name": self.name,
+            "projectNumber": str(self.project_number) if self.project_number else self.id,
             "location": self.location,
             "createdAt": self.created_at.isoformat() + "Z",
             "updatedAt": self.updated_at.isoformat() + "Z",

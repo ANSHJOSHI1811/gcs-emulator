@@ -1,412 +1,252 @@
 """
-IAM Handlers - HTTP request handlers for IAM API endpoints
+IAM handler - Service Accounts, Roles, and Policies management
 """
+import secrets
+import json
+import base64
+from datetime import datetime, timedelta
 from flask import Blueprint, request, jsonify
-from typing import Dict, Any
-from app.services.iam_service import ServiceAccountService, IAMPolicyService, RoleService
-from app.serializers.iam_serializers import (
-    ServiceAccountSerializer, ServiceAccountKeySerializer,
-    IAMPolicySerializer, RoleSerializer
-)
-from app.utils.gcs_errors import (
-    not_found_error,
-    invalid_argument_error,
-    internal_error,
-    conflict_error
-)
+from app.factory import db
+from app.models.service_account import ServiceAccount, ServiceAccountKey
+from app.models.iam_policy import IamPolicy, Role, get_role_permissions
+from app.models.project import Project
+from app.handlers.errors import error_response
 
-# Create blueprints
-service_accounts_bp = Blueprint('service_accounts', __name__)
-iam_policies_bp = Blueprint('iam_policies', __name__)
-roles_bp = Blueprint('iam_roles', __name__)
-
-# Initialize services
-sa_service = ServiceAccountService()
-policy_service = IAMPolicyService()
-role_service = RoleService()
+iam_bp = Blueprint("iam", __name__)
 
 
-# ============================================================================
-# Service Account Endpoints
-# ============================================================================
+# ========== Service Accounts ==========
 
-@service_accounts_bp.route('/v1/projects/<project_id>/serviceAccounts', methods=['POST'])
-def create_service_account(project_id: str):
+@iam_bp.route("/v1/projects/<project_id>/serviceAccounts", methods=["POST"])
+def create_service_account(project_id):
     """Create a service account"""
-    try:
-        data = request.get_json()
-        account_id = data.get('accountId')
-        
-        if not account_id:
-            return invalid_argument_error("accountId is required")
-        
-        service_account = sa_service.create_service_account(
-            project_id=project_id,
-            account_id=account_id,
-            display_name=data.get('displayName'),
-            description=data.get('description')
-        )
-        
-        return jsonify(ServiceAccountSerializer.to_dict(service_account)), 201
-    except ValueError as e:
-        return invalid_argument_error(str(e))
-    except Exception as e:
-        return internal_error(f"Internal error: {str(e)}")
+    data = request.get_json()
+    account_id = data.get("accountId")
+    
+    if not account_id:
+        return error_response(400, "INVALID_ARGUMENT", "accountId is required")
+    
+    # Check if project exists
+    project = Project.query.filter_by(id=project_id).first()
+    if not project:
+        return error_response(404, "NOT_FOUND", f"Project {project_id} not found")
+    
+    # Generate unique ID and email
+    unique_id = str(secrets.randbelow(10**21)).zfill(21)
+    email = f"{account_id}@{project_id}.iam.gserviceaccount.com"
+    resource_name = f"projects/{project_id}/serviceAccounts/{email}"
+    
+    # Check if already exists
+    existing = ServiceAccount.query.filter_by(email=email).first()
+    if existing:
+        return error_response(409, "ALREADY_EXISTS", f"Service account {email} already exists")
+    
+    sa = ServiceAccount(
+        id=resource_name,
+        project_id=project_id,
+        email=email,
+        unique_id=unique_id,
+        display_name=data.get("displayName", account_id),
+        description=data.get("description", ""),
+    )
+    
+    db.session.add(sa)
+    db.session.commit()
+    
+    return jsonify(sa.to_dict()), 201
 
 
-@service_accounts_bp.route('/v1/projects/<project_id>/serviceAccounts', methods=['GET'])
-def list_service_accounts(project_id: str):
-    """List service accounts for a project"""
-    try:
-        accounts = sa_service.list_service_accounts(project_id)
-        return jsonify({
-            "accounts": [ServiceAccountSerializer.to_list_item(sa) for sa in accounts]
-        }), 200
-    except Exception as e:
-        return internal_error(f"Internal error: {str(e)}")
+@iam_bp.route("/v1/projects/<project_id>/serviceAccounts", methods=["GET"])
+def list_service_accounts(project_id):
+    """List service accounts in a project"""
+    accounts = ServiceAccount.query.filter_by(project_id=project_id).all()
+    
+    return jsonify({
+        "accounts": [sa.to_dict() for sa in accounts]
+    })
 
 
-@service_accounts_bp.route('/v1/projects/<project_id>/serviceAccounts/<account_email>', methods=['GET'])
-def get_service_account(project_id: str, account_email: str):
-    """Get a service account"""
-    try:
-        # Reconstruct full email if needed
-        if '@' not in account_email:
-            account_email = f"{account_email}@{project_id}.iam.gserviceaccount.com"
-        
-        service_account = sa_service.get_service_account(account_email)
-        if not service_account:
-            return not_found_error(account_email, "service account")
-        
-        return jsonify(ServiceAccountSerializer.to_dict(service_account)), 200
-    except Exception as e:
-        return internal_error(f"Internal error: {str(e)}")
+@iam_bp.route("/v1/projects/<project_id>/serviceAccounts/<email>", methods=["GET"])
+def get_service_account(project_id, email):
+    """Get a service account by email"""
+    resource_name = f"projects/{project_id}/serviceAccounts/{email}"
+    
+    sa = ServiceAccount.query.filter_by(id=resource_name).first()
+    if not sa:
+        return error_response(404, "NOT_FOUND", f"Service account {resource_name} not found")
+    
+    return jsonify(sa.to_dict())
 
 
-@service_accounts_bp.route('/v1/projects/<project_id>/serviceAccounts/<account_email>', methods=['PATCH', 'PUT'])
-def update_service_account(project_id: str, account_email: str):
-    """Update a service account"""
-    try:
-        if '@' not in account_email:
-            account_email = f"{account_email}@{project_id}.iam.gserviceaccount.com"
-        
-        data = request.get_json()
-        service_account = sa_service.update_service_account(
-            email=account_email,
-            display_name=data.get('displayName'),
-            description=data.get('description')
-        )
-        
-        return jsonify(ServiceAccountSerializer.to_dict(service_account)), 200
-    except ValueError as e:
-        # Treat not found as 404
-        msg = str(e)
-        if "not found" in msg.lower():
-            return not_found_error(account_email, "service account")
-        return invalid_argument_error(msg)
-    except Exception as e:
-        return internal_error(f"Internal error: {str(e)}")
-
-
-@service_accounts_bp.route('/v1/projects/<project_id>/serviceAccounts/<account_email>', methods=['DELETE'])
-def delete_service_account(project_id: str, account_email: str):
+@iam_bp.route("/v1/projects/<project_id>/serviceAccounts/<email>", methods=["DELETE"])
+def delete_service_account(project_id, email):
     """Delete a service account"""
-    try:
-        if '@' not in account_email:
-            account_email = f"{account_email}@{project_id}.iam.gserviceaccount.com"
-        
-        sa_service.delete_service_account(account_email)
-        return '', 204
-    except ValueError as e:
-        msg = str(e)
-        if "not found" in msg.lower():
-            return not_found_error(account_email, "service account")
-        return invalid_argument_error(msg)
-    except Exception as e:
-        return internal_error(f"Internal error: {str(e)}")
+    resource_name = f"projects/{project_id}/serviceAccounts/{email}"
+    
+    sa = ServiceAccount.query.filter_by(id=resource_name).first()
+    if not sa:
+        return error_response(404, "NOT_FOUND", f"Service account {resource_name} not found")
+    
+    db.session.delete(sa)
+    db.session.commit()
+    
+    return "", 204
 
 
-@service_accounts_bp.route('/v1/projects/<project_id>/serviceAccounts/<account_email>:disable', methods=['POST'])
-def disable_service_account(project_id: str, account_email: str):
-    """Disable a service account"""
-    try:
-        if '@' not in account_email:
-            account_email = f"{account_email}@{project_id}.iam.gserviceaccount.com"
-        
-        service_account = sa_service.disable_service_account(account_email)
-        return jsonify(ServiceAccountSerializer.to_dict(service_account)), 200
-    except ValueError as e:
-        msg = str(e)
-        if "not found" in msg.lower():
-            return not_found_error(account_email, "service account")
-        return invalid_argument_error(msg)
-    except Exception as e:
-        return internal_error(f"Internal error: {str(e)}")
+# ========== Service Account Keys ==========
 
-
-@service_accounts_bp.route('/v1/projects/<project_id>/serviceAccounts/<account_email>:enable', methods=['POST'])
-def enable_service_account(project_id: str, account_email: str):
-    """Enable a service account"""
-    try:
-        if '@' not in account_email:
-            account_email = f"{account_email}@{project_id}.iam.gserviceaccount.com"
-        
-        service_account = sa_service.enable_service_account(account_email)
-        return jsonify(ServiceAccountSerializer.to_dict(service_account)), 200
-    except ValueError as e:
-        msg = str(e)
-        if "not found" in msg.lower():
-            return not_found_error(account_email, "service account")
-        return invalid_argument_error(msg)
-    except Exception as e:
-        return internal_error(f"Internal error: {str(e)}")
-
-
-# ============================================================================
-# Service Account Key Endpoints
-# ============================================================================
-
-@service_accounts_bp.route('/v1/projects/<project_id>/serviceAccounts/<account_email>/keys', methods=['POST'])
-def create_service_account_key(project_id: str, account_email: str):
+@iam_bp.route("/v1/projects/<project_id>/serviceAccounts/<email>/keys", methods=["POST"])
+def create_service_account_key(project_id, email):
     """Create a service account key"""
-    try:
-        if '@' not in account_email:
-            account_email = f"{account_email}@{project_id}.iam.gserviceaccount.com"
-        
-        data = request.get_json() or {}
-        key = sa_service.create_key(
-            email=account_email,
-            key_algorithm=data.get('keyAlgorithm', 'KEY_ALG_RSA_2048'),
-            private_key_type=data.get('privateKeyType', 'TYPE_GOOGLE_CREDENTIALS_FILE')
-        )
-        
-        return jsonify(ServiceAccountKeySerializer.to_dict(key, include_private_key=True)), 201
-    except ValueError as e:
-        msg = str(e)
-        if "not found" in msg.lower():
-            return not_found_error(account_email, "service account")
-        return invalid_argument_error(msg)
-    except Exception as e:
-        return internal_error(f"Internal error: {str(e)}")
+    resource_name = f"projects/{project_id}/serviceAccounts/{email}"
+    
+    sa = ServiceAccount.query.filter_by(id=resource_name).first()
+    if not sa:
+        return error_response(404, "NOT_FOUND", f"Service account {resource_name} not found")
+    
+    data = request.get_json() or {}
+    private_key_type = data.get("privateKeyType", "TYPE_GOOGLE_CREDENTIALS_FILE")
+    
+    # Generate key ID
+    key_id = secrets.token_hex(20)
+    key_name = f"{resource_name}/keys/{key_id}"
+    
+    # Generate mock JSON key file
+    json_key = {
+        "type": "service_account",
+        "project_id": sa.project_id,
+        "private_key_id": key_id,
+        "private_key": f"-----BEGIN PRIVATE KEY-----\n{secrets.token_urlsafe(512)}\n-----END PRIVATE KEY-----\n",
+        "client_email": sa.email,
+        "client_id": sa.unique_id,
+        "auth_uri": "http://localhost:8080/o/oauth2/auth",
+        "token_uri": "http://localhost:8080/token",
+        "auth_provider_x509_cert_url": "http://localhost:8080/oauth2/v1/certs",
+    }
+    
+    key = ServiceAccountKey(
+        id=key_name,
+        service_account_id=sa.id,
+        name=key_name,
+        private_key_type=private_key_type,
+        private_key_data=base64.b64encode(json.dumps(json_key).encode()).decode(),
+    )
+    
+    db.session.add(key)
+    db.session.commit()
+    
+    return jsonify(key.to_dict(include_private=True)), 201
 
 
-@service_accounts_bp.route('/v1/projects/<project_id>/serviceAccounts/<account_email>/keys', methods=['GET'])
-def list_service_account_keys(project_id: str, account_email: str):
+@iam_bp.route("/v1/projects/<project_id>/serviceAccounts/<email>/keys", methods=["GET"])
+def list_service_account_keys(project_id, email):
     """List service account keys"""
-    try:
-        if '@' not in account_email:
-            account_email = f"{account_email}@{project_id}.iam.gserviceaccount.com"
-        
-        keys = sa_service.list_keys(account_email)
-        return jsonify({
-            "keys": [ServiceAccountKeySerializer.to_dict(key, include_private_key=False) for key in keys]
-        }), 200
-    except Exception as e:
-        return internal_error(f"Internal error: {str(e)}")
+    resource_name = f"projects/{project_id}/serviceAccounts/{email}"
+    
+    sa = ServiceAccount.query.filter_by(id=resource_name).first()
+    if not sa:
+        return error_response(404, "NOT_FOUND", f"Service account {resource_name} not found")
+    
+    return jsonify({
+        "keys": [key.to_dict() for key in sa.keys]
+    })
 
 
-@service_accounts_bp.route('/v1/projects/<project_id>/serviceAccounts/<account_email>/keys/<key_id>', methods=['GET'])
-def get_service_account_key(project_id: str, account_email: str, key_id: str):
-    """Get a service account key"""
-    try:
-        if '@' not in account_email:
-            account_email = f"{account_email}@{project_id}.iam.gserviceaccount.com"
-        
-        key_name = f"projects/{project_id}/serviceAccounts/{account_email}/keys/{key_id}"
-        key = sa_service.get_key(key_name)
-        
-        if not key:
-            return not_found_error(key_id, "key")
-        
-        return jsonify(ServiceAccountKeySerializer.to_dict(key, include_private_key=False)), 200
-    except Exception as e:
-        return internal_error(f"Internal error: {str(e)}")
-
-
-@service_accounts_bp.route('/v1/projects/<project_id>/serviceAccounts/<account_email>/keys/<key_id>', methods=['DELETE'])
-def delete_service_account_key(project_id: str, account_email: str, key_id: str):
+@iam_bp.route("/v1/projects/<project_id>/serviceAccounts/<email>/keys/<key_id>", methods=["DELETE"])
+def delete_service_account_key(project_id, email, key_id):
     """Delete a service account key"""
-    try:
-        if '@' not in account_email:
-            account_email = f"{account_email}@{project_id}.iam.gserviceaccount.com"
-        
-        key_name = f"projects/{project_id}/serviceAccounts/{account_email}/keys/{key_id}"
-        sa_service.delete_key(key_name)
-        return '', 204
-    except ValueError as e:
-        msg = str(e)
-        if "not found" in msg.lower():
-            return not_found_error(key_id, "key")
-        return invalid_argument_error(msg)
-    except Exception as e:
-        return internal_error(f"Internal error: {str(e)}")
+    key_name = f"projects/{project_id}/serviceAccounts/{email}/keys/{key_id}"
+    
+    key = ServiceAccountKey.query.filter_by(id=key_name).first()
+    if not key:
+        return error_response(404, "NOT_FOUND", f"Key {key_name} not found")
+    
+    db.session.delete(key)
+    db.session.commit()
+    
+    return "", 204
 
 
-# ============================================================================
-# IAM Policy Endpoints
-# ============================================================================
+# ========== IAM Policies ==========
 
-@iam_policies_bp.route('/v1/<path:resource>:getIamPolicy', methods=['GET', 'POST'])
-def get_iam_policy(resource: str):
+@iam_bp.route("/v1/<path:resource_path>:getIamPolicy", methods=["POST", "GET"])
+def get_iam_policy(resource_path):
     """Get IAM policy for a resource"""
-    try:
-        # Determine resource type from path
-        resource_type = _determine_resource_type(resource)
-        
-        policy = policy_service.get_iam_policy(resource, resource_type)
-        return jsonify(IAMPolicySerializer.to_dict(policy)), 200
-    except Exception as e:
-        return internal_error(f"Internal error: {str(e)}")
-
-
-@iam_policies_bp.route('/v1/<path:resource>:setIamPolicy', methods=['POST'])
-def set_iam_policy(resource: str):
-    """Set IAM policy for a resource"""
-    try:
-        data = request.get_json()
-        policy_data = data.get('policy', {})
-        
-        resource_type = _determine_resource_type(resource)
-        
-        policy = policy_service.set_iam_policy(
-            resource_name=resource,
-            resource_type=resource_type,
-            bindings=policy_data.get('bindings', []),
-            version=policy_data.get('version', 1),
-            etag=policy_data.get('etag')
-        )
-        
-        return jsonify(IAMPolicySerializer.to_dict(policy)), 200
-    except ValueError as e:
-        return invalid_argument_error(str(e))
-    except Exception as e:
-        return internal_error(f"Internal error: {str(e)}")
-
-
-@iam_policies_bp.route('/v1/<path:resource>:testIamPermissions', methods=['POST'])
-def test_iam_permissions(resource: str):
-    """Test IAM permissions for a resource"""
-    try:
-        data = request.get_json()
-        permissions = data.get('permissions', [])
-        
-        granted_permissions = policy_service.test_iam_permissions(resource, permissions)
-        return jsonify({"permissions": granted_permissions}), 200
-    except Exception as e:
-        return internal_error(f"Internal error: {str(e)}")
-
-
-# ============================================================================
-# Role Endpoints
-# ============================================================================
-
-@roles_bp.route('/v1/projects/<project_id>/roles', methods=['POST'])
-def create_role(project_id: str):
-    """Create a custom role"""
-    try:
-        data = request.get_json()
-        role_id = data.get('roleId')
-        
-        if not role_id:
-            return invalid_argument_error("roleId is required")
-        
-        role = role_service.create_role(
-            project_id=project_id,
-            role_id=role_id,
-            title=data.get('title', role_id),
-            description=data.get('description'),
-            included_permissions=data.get('includedPermissions', []),
-            stage=data.get('stage', 'GA')
-        )
-        
-        return jsonify(RoleSerializer.to_dict(role)), 201
-    except ValueError as e:
-        return invalid_argument_error(str(e))
-    except Exception as e:
-        return internal_error(f"Internal error: {str(e)}")
-
-
-@roles_bp.route('/v1/projects/<project_id>/roles', methods=['GET'])
-@roles_bp.route('/v1/roles', methods=['GET'])
-def list_roles(project_id: str = None):
-    """List roles"""
-    try:
-        roles = role_service.list_roles(project_id)
+    # Parse resource type and ID
+    resource_type, resource_id = parse_resource_path(resource_path)
+    
+    policy = IamPolicy.query.filter_by(
+        resource_type=resource_type,
+        resource_id=resource_id
+    ).first()
+    
+    if not policy:
+        # Return empty policy
         return jsonify({
-            "roles": [RoleSerializer.to_list_item(role) for role in roles]
-        }), 200
-    except Exception as e:
-        return internal_error(f"Internal error: {str(e)}")
+            "version": 1,
+            "bindings": [],
+            "etag": "",
+        })
+    
+    return jsonify(policy.to_dict())
 
 
-@roles_bp.route('/v1/<path:role_name>', methods=['GET'])
-def get_role(role_name: str):
-    """Get a role"""
-    try:
-        role = role_service.get_role(role_name)
-        if not role:
-            return not_found_error(role_name, "role")
-        
-        return jsonify(RoleSerializer.to_dict(role)), 200
-    except Exception as e:
-        return internal_error(f"Internal error: {str(e)}")
-
-
-@roles_bp.route('/v1/<path:role_name>', methods=['PATCH'])
-def update_role(role_name: str):
-    """Update a custom role"""
-    try:
-        data = request.get_json()
-        role = role_service.update_role(
-            role_name=role_name,
-            title=data.get('title'),
-            description=data.get('description'),
-            included_permissions=data.get('includedPermissions'),
-            stage=data.get('stage')
+@iam_bp.route("/v1/<path:resource_path>:setIamPolicy", methods=["POST"])
+def set_iam_policy(resource_path):
+    """Set IAM policy for a resource"""
+    data = request.get_json()
+    new_policy_data = data.get("policy", {})
+    
+    # Parse resource type and ID
+    resource_type, resource_id = parse_resource_path(resource_path)
+    
+    policy = IamPolicy.query.filter_by(
+        resource_type=resource_type,
+        resource_id=resource_id
+    ).first()
+    
+    if not policy:
+        policy = IamPolicy(
+            resource_type=resource_type,
+            resource_id=resource_id,
         )
-        
-        return jsonify(RoleSerializer.to_dict(role)), 200
-    except ValueError as e:
-        return invalid_argument_error(str(e))
-    except Exception as e:
-        return internal_error(f"Internal error: {str(e)}")
+        db.session.add(policy)
+    
+    policy.version = new_policy_data.get("version", 1)
+    policy.bindings = new_policy_data.get("bindings", [])
+    policy.etag = secrets.token_hex(8)
+    
+    db.session.commit()
+    
+    return jsonify(policy.to_dict())
 
 
-@roles_bp.route('/v1/<path:role_name>', methods=['DELETE'])
-def delete_role(role_name: str):
-    """Delete a custom role"""
-    try:
-        role = role_service.delete_role(role_name)
-        return jsonify(RoleSerializer.to_dict(role)), 200
-    except ValueError as e:
-        return invalid_argument_error(str(e))
-    except Exception as e:
-        return internal_error(f"Internal error: {str(e)}")
+@iam_bp.route("/v1/<path:resource_path>:testIamPermissions", methods=["POST"])
+def test_iam_permissions(resource_path):
+    """Test which permissions the caller has on a resource"""
+    data = request.get_json()
+    permissions = data.get("permissions", [])
+    
+    # In emulator mode, grant all permissions by default
+    # In real implementation, this would check actual IAM policies
+    
+    return jsonify({
+        "permissions": permissions  # Grant all requested permissions
+    })
 
 
-@roles_bp.route('/v1/<path:role_name>:undelete', methods=['POST'])
-def undelete_role(role_name: str):
-    """Undelete a custom role"""
-    try:
-        role = role_service.undelete_role(role_name)
-        return jsonify(RoleSerializer.to_dict(role)), 200
-    except ValueError as e:
-        return invalid_argument_error(str(e))
-    except Exception as e:
-        return internal_error(f"Internal error: {str(e)}")
-
-
-# ============================================================================
-# Helper Functions
-# ============================================================================
-
-def _determine_resource_type(resource: str) -> str:
-    """Determine resource type from resource path"""
-    if 'projects' in resource and 'buckets' in resource:
-        return 'bucket'
-    elif 'projects' in resource and 'serviceAccounts' in resource:
-        return 'service_account'
-    elif resource.startswith('projects/'):
-        return 'project'
-    else:
-        return 'unknown'
+def parse_resource_path(path: str) -> tuple:
+    """Parse resource path into type and ID"""
+    if path.startswith("projects/"):
+        if "/buckets/" in path:
+            parts = path.split("/buckets/")
+            return "bucket", parts[1]
+        elif "/instances/" in path:
+            parts = path.split("/instances/")
+            return "instance", parts[1]
+        else:
+            # Project itself
+            project_id = path.replace("projects/", "").split("/")[0]
+            return "project", project_id
+    
+    return "unknown", path

@@ -8,12 +8,16 @@ import StorageDashboardPage from './pages/StorageDashboardPage';
 import BucketListPage from './pages/BucketListPage';
 import BucketDetails from './pages/BucketDetails';
 import ObjectDetailsPage from './pages/ObjectDetailsPage';
-import ActivityPage from './pages/ActivityPage';
+// import ActivityPage from './pages/ActivityPage';
 import EventsPage from './pages/EventsPage';
 import SettingsPage from './pages/SettingsPage';
-import ServiceAccountsPage from './pages/ServiceAccountsPage';
-import RolesPage from './pages/RolesPage';
-import ComputePage from './pages/ComputePage';
+import IAMDashboardPage from './pages/IAMDashboardPage';
+import ComputeDashboardPage from './pages/ComputeDashboardPage';
+import VPCDashboardPage from './pages/VPCDashboardPage';
+import NetworksPage from './pages/NetworksPage';
+import SubnetsPage from './pages/SubnetsPage';
+import FirewallsPage from './pages/FirewallsPage';
+import RoutesPage from './pages/RoutesPage';
 
 function App() {
   return (
@@ -38,15 +42,21 @@ function App() {
 
             {/* IAM Service Routes */}
             <Route path="/services/iam">
-              <Route index element={<Navigate to="/services/iam/service-accounts" replace />} />
-              <Route path="service-accounts" element={<ServiceAccountsPage />} />
-              <Route path="roles" element={<RolesPage />} />
+              <Route index element={<IAMDashboardPage />} />
             </Route>
 
-            {/* Compute Engine Routes */}
-            <Route path="/services/compute">
-              <Route index element={<Navigate to="/services/compute/instances" replace />} />
-              <Route path="instances" element={<ComputePage />} />
+            {/* Compute Engine Service Routes */}
+            <Route path="/services/compute-engine">
+              <Route index element={<ComputeDashboardPage />} />
+            </Route>
+
+            {/* VPC Network Service Routes */}
+            <Route path="/services/vpc">
+              <Route index element={<VPCDashboardPage />} />
+              <Route path="networks" element={<NetworksPage />} />
+              <Route path="subnets" element={<SubnetsPage />} />
+              <Route path="firewalls" element={<FirewallsPage />} />
+              <Route path="routes" element={<RoutesPage />} />
             </Route>
 
             {/* Legacy Routes - Redirect to new structure */}

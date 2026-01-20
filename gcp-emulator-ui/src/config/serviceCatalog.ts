@@ -1,4 +1,4 @@
-import { LucideIcon, HardDrive, Cpu, Network, Shield, MessageSquare, Activity } from 'lucide-react';
+import { LucideIcon, HardDrive, Cpu, Network, Shield, MessageSquare, Activity, Globe, Lock, Route } from 'lucide-react';
 
 export interface ServiceLink {
   label: string;
@@ -55,7 +55,9 @@ export const serviceCategories: ServiceCategory[] = [
         category: 'Compute',
         enabled: true,
         sidebarLinks: [
-          { label: 'Instances', path: '/services/compute/instances', icon: Cpu },
+          { label: 'Dashboard', path: '/services/compute-engine' },
+          { label: 'VM Instances', path: '/services/compute-engine/instances', icon: Cpu },
+          { label: 'Zones', path: '/services/compute-engine/zones' },
         ],
       },
     ],
@@ -70,7 +72,14 @@ export const serviceCategories: ServiceCategory[] = [
         description: 'Virtual Private Cloud and networking',
         icon: Network,
         category: 'Networking',
-        enabled: false,
+        enabled: true,
+        sidebarLinks: [
+          { label: 'Dashboard', path: '/services/vpc' },
+          { label: 'Networks', path: '/services/vpc/networks', icon: Globe },
+          { label: 'Subnets', path: '/services/vpc/subnets', icon: Network },
+          { label: 'Firewall Rules', path: '/services/vpc/firewalls', icon: Lock },
+          { label: 'Routes', path: '/services/vpc/routes', icon: Route },
+        ],
       },
     ],
   },
@@ -86,8 +95,9 @@ export const serviceCategories: ServiceCategory[] = [
         category: 'IAM & Admin',
         enabled: true,
         sidebarLinks: [
+          { label: 'Dashboard', path: '/services/iam' },
           { label: 'Service Accounts', path: '/services/iam/service-accounts', icon: Shield },
-          { label: 'Roles', path: '/services/iam/roles' },
+          { label: 'IAM Policies', path: '/services/iam/policies' },
         ],
       },
     ],

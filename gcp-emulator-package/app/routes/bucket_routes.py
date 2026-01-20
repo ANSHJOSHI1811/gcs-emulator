@@ -12,6 +12,7 @@ from app.handlers.bucket_handler import (
 )
 from app.utils.gcs_errors import invalid_argument_error
 from app.utils.signer import SignedURLService
+from app.utils.iam_enforcer import require_permission
 
 buckets_bp = Blueprint("buckets", __name__)
 
@@ -69,6 +70,7 @@ def generate_signed_url(bucket_name, object_name):
 
 
 @buckets_bp.route("", methods=["GET"])
+@require_permission('project', 'storage.buckets.list')
 def list_buckets():
     """
     List all buckets for a project
@@ -78,6 +80,7 @@ def list_buckets():
 
 
 @buckets_bp.route("", methods=["POST"])
+@require_permission('project', 'storage.buckets.create')
 def create_bucket():
     """
     Create a new bucket
@@ -87,6 +90,7 @@ def create_bucket():
 
 
 @buckets_bp.route("/<bucket>", methods=["GET"])
+@require_permission('bucket', 'storage.buckets.get', 'bucket')
 def get_bucket(bucket):
     """
     Get bucket metadata
@@ -96,6 +100,7 @@ def get_bucket(bucket):
 
 
 @buckets_bp.route("/<bucket>", methods=["DELETE"])
+@require_permission('bucket', 'storage.buckets.delete', 'bucket')
 def delete_bucket(bucket):
     """
     Delete a bucket (must be empty)

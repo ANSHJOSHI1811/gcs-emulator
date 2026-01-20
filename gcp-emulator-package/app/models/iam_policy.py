@@ -1,140 +1,133 @@
 """
-IAM Policy models - represents IAM policies and bindings
+IAM Policy model - IAM policies and bindings for GCP emulator
 """
 from datetime import datetime
-from sqlalchemy.dialects.postgresql import JSON, ARRAY
+from sqlalchemy.dialects.postgresql import JSON
 from app.factory import db
 
 
-class IAMPolicy(db.Model):
-    """IAM Policy model - represents a policy attached to a resource"""
+class IamPolicy(db.Model):
+    """IAM Policy model - stores policies for resources"""
     __tablename__ = "iam_policies"
     
     id = db.Column(db.Integer, primary_key=True)
-    
-    # Resource identifier (e.g., projects/my-project, projects/my-project/buckets/my-bucket)
-    resource_name = db.Column(db.String(500), unique=True, nullable=False, index=True)
-    resource_type = db.Column(db.String(50), nullable=False)  # project, bucket, etc.
-    
-    # Policy version (for compatibility with different IAM versions)
+    resource_type = db.Column(db.String(50), nullable=False)  # project, bucket, instance
+    resource_id = db.Column(db.String(255), nullable=False)  # resource identifier
     version = db.Column(db.Integer, default=1)
-    
-    # ETag for optimistic concurrency control
-    etag = db.Column(db.String(64))
-    
-    # Timestamps
+    bindings = db.Column(JSON, default=list)  # [{role: "...", members: ["user:...", "serviceAccount:..."]}]
+    etag = db.Column(db.String(255))  # for optimistic concurrency
     created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
     
-    # Relationships
-    bindings = db.relationship("IAMBinding", backref="policy", lazy=True, cascade="all, delete-orphan")
+    __table_args__ = (
+        db.UniqueConstraint('resource_type', 'resource_id', name='uix_resource'),
+    )
     
     def __repr__(self) -> str:
-        return f"<IAMPolicy {self.resource_name}>"
+        return f"<IamPolicy {self.resource_type}/{self.resource_id}>"
     
     def to_dict(self) -> dict:
-        """Convert to dictionary matching GCP API format"""
+        """Convert to GCP IAM Policy format"""
         return {
             "version": self.version,
-            "bindings": [binding.to_dict() for binding in self.bindings],
-            "etag": self.etag or self._compute_etag(),
+            "bindings": self.bindings or [],
+            "etag": self.etag or "",
         }
     
-    def _compute_etag(self) -> str:
-        """Compute ETag for versioning"""
-        import hashlib
-        data = f"{self.resource_name}{self.updated_at.isoformat()}{len(self.bindings)}"
-        return hashlib.md5(data.encode()).hexdigest()
-
-
-class IAMBinding(db.Model):
-    """IAM Binding model - represents a role binding to members"""
-    __tablename__ = "iam_bindings"
-    
-    id = db.Column(db.Integer, primary_key=True)
-    
-    # Foreign key to policy
-    policy_id = db.Column(db.Integer, db.ForeignKey('iam_policies.id'), nullable=False)
-    
-    # Role (e.g., roles/storage.objectViewer, roles/owner)
-    role = db.Column(db.String(255), nullable=False)
-    
-    # Members (stored as PostgreSQL array)
-    # Format: ["user:user@example.com", "serviceAccount:sa@project.iam.gserviceaccount.com", "allUsers"]
-    members = db.Column(ARRAY(db.String(500)), default=list, nullable=False)
-    
-    # Condition (optional IAM condition)
-    condition = db.Column(JSON)
-    
-    # Timestamps
-    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
-    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
-    
-    def __repr__(self) -> str:
-        return f"<IAMBinding {self.role} with {len(self.members)} members>"
-    
-    def to_dict(self) -> dict:
-        """Convert to dictionary matching GCP API format"""
-        result = {
-            "role": self.role,
-            "members": self.members or [],
-        }
+    def has_permission(self, member: str, permission: str) -> bool:
+        """Check if member has permission through role bindings"""
+        if not self.bindings:
+            return False
         
-        if self.condition:
-            result["condition"] = self.condition
+        # Get role mappings for permission
+        role_map = get_role_permissions()
         
-        return result
+        for binding in self.bindings:
+            role = binding.get("role", "")
+            members = binding.get("members", [])
+            
+            # Check if member is in binding
+            if member in members or "allUsers" in members or "allAuthenticatedUsers" in members:
+                # Check if role grants permission
+                if role in role_map and permission in role_map[role]:
+                    return True
+        
+        return False
 
 
 class Role(db.Model):
-    """Role model - represents a custom or predefined IAM role"""
-    __tablename__ = "iam_roles"
+    """Role model - predefined and custom roles"""
+    __tablename__ = "roles"
     
-    id = db.Column(db.Integer, primary_key=True)
-    
-    # Role name (e.g., roles/storage.objectViewer or projects/my-project/roles/customRole)
-    name = db.Column(db.String(255), unique=True, nullable=False, index=True)
-    
-    # Role properties
-    title = db.Column(db.String(255), nullable=False)
+    id = db.Column(db.String(255), primary_key=True)  # roles/storage.admin or projects/{project}/roles/custom
+    name = db.Column(db.String(255), nullable=False)
+    title = db.Column(db.String(255))
     description = db.Column(db.Text)
-    stage = db.Column(db.String(50), default="GA")  # GA, BETA, ALPHA, DEPRECATED
-    
-    # Role type
-    is_custom = db.Column(db.Boolean, default=False, nullable=False)
-    project_id = db.Column(db.String(63), db.ForeignKey('projects.id'))
-    
-    # Permissions (stored as PostgreSQL array)
-    # Format: ["storage.objects.get", "storage.objects.list"]
-    included_permissions = db.Column(ARRAY(db.String(255)), default=list, nullable=False)
-    
-    # Deleted flag (for soft delete)
-    deleted = db.Column(db.Boolean, default=False, nullable=False)
-    
-    # Timestamps
+    stage = db.Column(db.String(50), default="GA")  # GA, BETA, ALPHA
+    permissions = db.Column(JSON, default=list)  # ["storage.buckets.create", "storage.objects.get"]
+    is_custom = db.Column(db.Boolean, default=False)
+    project_id = db.Column(db.String(63), db.ForeignKey("projects.id"), nullable=True)  # for custom roles
     created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
-    
-    # ETag for versioning
-    etag = db.Column(db.String(64))
     
     def __repr__(self) -> str:
         return f"<Role {self.name}>"
     
     def to_dict(self) -> dict:
-        """Convert to dictionary matching GCP API format"""
+        """Convert to GCP API format"""
         return {
-            "name": self.name,
+            "name": self.id,
             "title": self.title,
             "description": self.description,
-            "includedPermissions": self.included_permissions or [],
+            "includedPermissions": self.permissions or [],
             "stage": self.stage,
-            "deleted": self.deleted,
-            "etag": self.etag or self._compute_etag(),
         }
-    
-    def _compute_etag(self) -> str:
-        """Compute ETag for versioning"""
-        import hashlib
-        data = f"{self.name}{self.updated_at.isoformat()}"
-        return hashlib.md5(data.encode()).hexdigest()
+
+
+def get_role_permissions() -> dict:
+    """Get default role to permissions mapping (hardcoded for emulator)"""
+    return {
+        "roles/owner": [
+            "storage.buckets.*",
+            "storage.objects.*",
+            "compute.instances.*",
+            "iam.serviceAccounts.*",
+            "iam.serviceAccountKeys.*",
+            "resourcemanager.projects.*",
+        ],
+        "roles/editor": [
+            "storage.buckets.create",
+            "storage.buckets.get",
+            "storage.buckets.list",
+            "storage.buckets.update",
+            "storage.objects.*",
+            "compute.instances.*",
+        ],
+        "roles/viewer": [
+            "storage.buckets.get",
+            "storage.buckets.list",
+            "storage.objects.get",
+            "storage.objects.list",
+            "compute.instances.get",
+            "compute.instances.list",
+        ],
+        "roles/storage.admin": [
+            "storage.buckets.*",
+            "storage.objects.*",
+        ],
+        "roles/storage.objectAdmin": [
+            "storage.objects.*",
+        ],
+        "roles/storage.objectViewer": [
+            "storage.objects.get",
+            "storage.objects.list",
+        ],
+        "roles/compute.admin": [
+            "compute.instances.*",
+            "compute.zones.*",
+            "compute.machineTypes.*",
+        ],
+        "roles/compute.instanceAdmin": [
+            "compute.instances.*",
+        ],
+    }

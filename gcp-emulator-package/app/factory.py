@@ -127,6 +127,18 @@ def register_blueprints(app: Flask) -> None:
     from app.handlers.cors_handler import cors_bp
     from app.handlers.notification_handler import notifications_bp
     from app.handlers.lifecycle_config_handler import lifecycle_config_bp
+    from app.handlers.auth_handler import auth_bp
+    from app.handlers.iam_handler import iam_bp
+    from app.handlers.compute_handler import compute_bp
+    from app.routes.network_routes import network_bp
+    from app.routes.subnet_routes import subnet_bp
+    from app.routes.firewall_routes import firewall_bp
+    from app.routes.route_routes import route_bp
+    from app.routes.address_routes import addresses_bp
+    from app.routes.operation_routes import operations_bp
+    from app.routes.router_routes import router_bp
+    from app.routes.peering_routes import peering_bp
+    from app.routes.vpn_routes import vpn_bp
     
     app.register_blueprint(health_bp)
     app.register_blueprint(buckets_bp, url_prefix="/storage/v1/b")
@@ -143,36 +155,21 @@ def register_blueprints(app: Flask) -> None:
     app.register_blueprint(notifications_bp, url_prefix="/storage/v1")  # Notification webhooks
     app.register_blueprint(lifecycle_config_bp, url_prefix="/storage/v1")  # Lifecycle configuration
     
-    # IAM Endpoints
-    from app.handlers.iam_handler import service_accounts_bp, iam_policies_bp, roles_bp
-    app.register_blueprint(service_accounts_bp)  # Service account management
-    app.register_blueprint(iam_policies_bp)  # IAM policy management
-    app.register_blueprint(roles_bp)  # IAM role management
+    # New: IAM and Compute Engine
+    app.register_blueprint(auth_bp)  # OAuth2 mock endpoints
+    app.register_blueprint(iam_bp, url_prefix="/iam")  # IAM service accounts and policies
+    app.register_blueprint(compute_bp)  # Compute Engine instances
     
-    # PHASE 1: Register Compute Engine blueprints (if enabled)
-    if app.config.get('COMPUTE_ENABLED', False):
-        from app.routes.compute_routes import create_compute_blueprint
-        from app.routes.compute_v1_routes import create_compute_v1_blueprint
-        from app.services.compute_service import ComputeService
-        try:
-            compute_service = ComputeService()
-            
-            # Legacy custom API (for existing UI)
-            compute_bp = create_compute_blueprint(compute_service)
-            app.register_blueprint(compute_bp)  # URL prefix: /compute
-            
-            # GCP Compute Engine API v1 (for SDK compatibility)
-            compute_v1_bp = create_compute_v1_blueprint(compute_service)
-            app.register_blueprint(compute_v1_bp)  # URL prefix: /compute/v1
-            
-            # Store compute_service in app config for sync worker
-            app.config['COMPUTE_SERVICE'] = compute_service
-            app.logger.info("Compute Engine enabled with SDK compatibility")
-        except Exception as e:
-            app.logger.warning(f"Compute Engine disabled due to error: {e}")
-            app.config['COMPUTE_SERVICE'] = None
-    else:
-        app.config['COMPUTE_SERVICE'] = None
+    # VPC Networking
+    app.register_blueprint(network_bp)  # VPC networks
+    app.register_blueprint(subnet_bp)  # VPC subnetworks
+    app.register_blueprint(firewall_bp)  # VPC firewall rules
+    app.register_blueprint(route_bp)  # VPC routes
+    app.register_blueprint(addresses_bp)  # External IP addresses
+    app.register_blueprint(router_bp)  # Cloud Router and Cloud NAT
+    app.register_blueprint(peering_bp)  # VPC Peering
+    app.register_blueprint(vpn_bp)  # VPN Gateway and Tunnels
+    app.register_blueprint(operations_bp)  # Operations polling
     
     # Register SDK compatibility middleware
     register_sdk_middleware(app)
