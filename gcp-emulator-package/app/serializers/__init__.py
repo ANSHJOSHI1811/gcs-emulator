@@ -1,3 +1,0 @@
-"""
-Serializers package - Response formatting
-"""
