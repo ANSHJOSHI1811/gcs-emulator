@@ -182,8 +182,11 @@ class FirewallRule(db.Model):
         self_link = f"http://127.0.0.1:8080/compute/v1/projects/{pid}/global/firewalls/{self.name}"
         network_link = f"http://127.0.0.1:8080/compute/v1/projects/{pid}/global/networks/{network.name}"
         
+        # Convert UUID to integer for gcloud CLI compatibility
+        id_as_int = int(self.id.hex[:16], 16) % (10**19)
+        
         result = {
-            'id': str(self.id),
+            'id': str(id_as_int),
             'name': self.name,
             'description': self.description or '',
             'network': network_link,

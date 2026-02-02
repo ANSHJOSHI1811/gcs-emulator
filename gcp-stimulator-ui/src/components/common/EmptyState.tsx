@@ -1,39 +1,17 @@
-import { Box, Typography } from '@mui/material';
-import FolderOffIcon from '@mui/icons-material/FolderOff';
+import { ReactNode } from 'react';
 
 interface EmptyStateProps {
-  message?: string;
+  title: string;
   description?: string;
-  icon?: React.ReactNode;
-  action?: React.ReactNode;
+  actionButton?: ReactNode;
 }
 
-export default function EmptyState({
-  message = 'No items found',
-  description,
-  icon,
-  action,
-}: EmptyStateProps) {
+export default function EmptyState({ title, description, actionButton }: EmptyStateProps) {
   return (
-    <Box
-      display="flex"
-      flexDirection="column"
-      alignItems="center"
-      justifyContent="center"
-      minHeight="300px"
-      gap={2}
-      p={4}
-    >
-      {icon || <FolderOffIcon sx={{ fontSize: 64, color: 'text.disabled' }} />}
-      <Typography variant="h6" color="text.secondary">
-        {message}
-      </Typography>
-      {description && (
-        <Typography variant="body2" color="text.disabled" textAlign="center">
-          {description}
-        </Typography>
-      )}
-      {action && <Box mt={2}>{action}</Box>}
-    </Box>
+    <div className="text-center py-12 px-4">
+      <h3 className="mt-2 text-lg font-medium text-gray-900">{title}</h3>
+      {description && <p className="mt-1 text-sm text-gray-500">{description}</p>}
+      {actionButton && <div className="mt-6">{actionButton}</div>}
+    </div>
   );
 }

@@ -297,12 +297,15 @@ def delete_network(project_id, network_name):
         db.session.delete(network)
         db.session.commit()
         
+        # Convert UUID to integer for gcloud CLI compatibility
+        id_as_int = int(network.id.hex[:16], 16) % (10**19)
+        
         # Create operation
         operation = create_operation(
             project_id=project_id,
             operation_type='delete',
             target_link=f"http://127.0.0.1:8080/compute/v1/projects/{project_id}/global/networks/{network_name}",
-            target_id=str(network.id)
+            target_id=str(id_as_int)
         )
         
         return jsonify(operation.to_dict()), 200

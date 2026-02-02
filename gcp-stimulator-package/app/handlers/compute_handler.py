@@ -365,12 +365,15 @@ def create_instance(project_id, zone_name):
         except Exception as net_error:
             print(f"Failed to create network interface: {net_error}")
     
+    # Convert UUID to integer for gcloud CLI compatibility
+    id_as_int = int(instance.id.hex[:16], 16) % (10**19)
+    
     # Return operation instead of instance object
     operation = create_operation(
         project_id=project_id,
         operation_type='insert',
         target_link=f"http://127.0.0.1:8080/compute/v1/projects/{project_id}/zones/{zone_name}/instances/{name}",
-        target_id=str(instance.id),
+        target_id=str(id_as_int),
         zone=zone_name
     )
     return jsonify(operation.to_dict()), 200
@@ -508,12 +511,15 @@ def delete_instance(project_id, zone_name, instance_name):
     db.session.delete(instance)
     db.session.commit()
     
+    # Convert UUID to integer for gcloud CLI compatibility
+    id_as_int = int(instance.id.hex[:16], 16) % (10**19)
+    
     # Return operation
     operation = create_operation(
         project_id=project_id,
         operation_type='delete',
         target_link=f"http://127.0.0.1:8080/compute/v1/projects/{project_id}/zones/{zone_name}/instances/{instance_name}",
-        target_id=str(instance.id),
+        target_id=str(id_as_int),
         zone=zone_name
     )
     return jsonify(operation.to_dict()), 200
@@ -546,12 +552,15 @@ def start_instance(project_id, zone_name, instance_name):
         except Exception as e:
             return error_response(500, "INTERNAL", f"Failed to start container: {e}")
     
+    # Convert UUID to integer for gcloud CLI compatibility
+    id_as_int = int(instance.id.hex[:16], 16) % (10**19)
+    
     # Return operation
     operation = create_operation(
         project_id=project_id,
         operation_type='start',
         target_link=f"http://127.0.0.1:8080/compute/v1/projects/{project_id}/zones/{zone_name}/instances/{instance_name}",
-        target_id=str(instance.id),
+        target_id=str(id_as_int),
         zone=zone_name
     )
     return jsonify(operation.to_dict()), 200
@@ -584,12 +593,145 @@ def stop_instance(project_id, zone_name, instance_name):
         except Exception as e:
             return error_response(500, "INTERNAL", f"Failed to stop container: {e}")
     
+    # Convert UUID to integer for gcloud CLI compatibility
+    id_as_int = int(instance.id.hex[:16], 16) % (10**19)
+    
     # Return operation
     operation = create_operation(
         project_id=project_id,
         operation_type='stop',
         target_link=f"http://127.0.0.1:8080/compute/v1/projects/{project_id}/zones/{zone_name}/instances/{instance_name}",
-        target_id=str(instance.id),
+        target_id=str(id_as_int),
+        zone=zone_name
+    )
+    return jsonify(operation.to_dict()), 200
+
+
+# ========== Disks ==========
+
+@compute_bp.route("/compute/v1/projects/<project_id>/zones/<zone_name>/disks", methods=["POST"])
+def create_disk(project_id, zone_name):
+    """Create a persistent disk"""
+    data = request.get_json()
+    name = data.get("name")
+    size_gb = data.get("sizeGb", 100)
+    disk_type = data.get("type", "pd-standard")
+    
+    if not name:
+        return error_response(400, "INVALID_ARGUMENT", "Disk name is required")
+    
+    # Check if disk already exists
+    result = db.session.execute(
+        db.text("SELECT id FROM disks WHERE project_id = :project_id AND zone = :zone AND name = :name"),
+        {"project_id": project_id, "zone": zone_name, "name": name}
+    ).fetchone()
+    
+    if result:
+        return error_response(409, "ALREADY_EXISTS", f"Disk {name} already exists in zone {zone_name}")
+    
+    # Generate disk ID
+    disk_id = str(secrets.randbelow(10**18))  # Smaller to avoid bigint overflow
+    
+    # Insert disk
+    db.session.execute(
+        db.text("""
+            INSERT INTO disks (id, project_id, name, zone, size_gb, disk_type, status)
+            VALUES (:id, :project_id, :name, :zone, :size_gb, :disk_type, 'READY')
+        """),
+        {
+            "id": disk_id,
+            "project_id": project_id,
+            "name": name,
+            "zone": zone_name,
+            "size_gb": size_gb,
+            "disk_type": disk_type
+        }
+    )
+    db.session.commit()
+    
+    # Return operation
+    operation = create_operation(
+        project_id=project_id,
+        operation_type='insert',
+        target_link=f"http://127.0.0.1:8080/compute/v1/projects/{project_id}/zones/{zone_name}/disks/{name}",
+        target_id=disk_id,
+        zone=zone_name
+    )
+    return jsonify(operation.to_dict()), 200
+
+
+@compute_bp.route("/compute/v1/projects/<project_id>/zones/<zone_name>/disks/<disk_name>", methods=["GET"])
+def get_disk(project_id, zone_name, disk_name):
+    """Get disk details"""
+    result = db.session.execute(
+        db.text("SELECT * FROM disks WHERE project_id = :project_id AND zone = :zone AND name = :name"),
+        {"project_id": project_id, "zone": zone_name, "name": disk_name}
+    ).fetchone()
+    
+    if not result:
+        return error_response(404, "NOT_FOUND", f"Disk {disk_name} not found")
+    
+    disk = {
+        "kind": "compute#disk",
+        "id": result.id,
+        "name": result.name,
+        "zone": f"projects/{project_id}/zones/{zone_name}",
+        "status": result.status,
+        "sizeGb": str(result.size_gb),
+        "type": f"projects/{project_id}/zones/{zone_name}/diskTypes/{result.disk_type}",
+        "selfLink": f"http://127.0.0.1:8080/compute/v1/projects/{project_id}/zones/{zone_name}/disks/{disk_name}",
+    }
+    
+    if result.attached_to:
+        disk["users"] = [f"projects/{project_id}/zones/{zone_name}/instances/{result.attached_to}"]
+    
+    return jsonify(disk), 200
+
+
+@compute_bp.route("/compute/v1/projects/<project_id>/zones/<zone_name>/instances/<instance_name>/attachDisk", methods=["POST"])
+def attach_disk(project_id, zone_name, instance_name):
+    """Attach a disk to an instance"""
+    data = request.get_json()
+    disk_name = data.get("source", "").split("/")[-1]  # Extract disk name from URL
+    
+    if not disk_name:
+        return error_response(400, "INVALID_ARGUMENT", "Disk source is required")
+    
+    # Check if instance exists
+    instance = Instance.query.filter_by(
+        project_id=project_id,
+        zone=zone_name,
+        name=instance_name
+    ).first()
+    
+    if not instance:
+        return error_response(404, "NOT_FOUND", f"Instance {instance_name} not found")
+    
+    # Check if disk exists
+    disk_result = db.session.execute(
+        db.text("SELECT id, attached_to FROM disks WHERE project_id = :project_id AND zone = :zone AND name = :name"),
+        {"project_id": project_id, "zone": zone_name, "name": disk_name}
+    ).fetchone()
+    
+    if not disk_result:
+        return error_response(404, "NOT_FOUND", f"Disk {disk_name} not found")
+    
+    if disk_result.attached_to:
+        return error_response(400, "INVALID_STATE", f"Disk {disk_name} is already attached")
+    
+    # Attach disk
+    db.session.execute(
+        db.text("UPDATE disks SET attached_to = :instance_name WHERE project_id = :project_id AND zone = :zone AND name = :name"),
+        {"instance_name": instance_name, "project_id": project_id, "zone": zone_name, "name": disk_name}
+    )
+    db.session.commit()
+    
+    # Return operation  
+    operation = create_operation(
+        project_id=project_id,
+        operation_type='attachDisk',
+        target_link=f"http://127.0.0.1:8080/compute/v1/projects/{project_id}/zones/{zone_name}/instances/{instance_name}",
+        target_id=disk_result.id,
         zone=zone_name
     )
     return jsonify(operation.to_dict()), 200

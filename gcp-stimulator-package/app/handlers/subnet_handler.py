@@ -169,12 +169,15 @@ def create_subnetwork(project_id: str, region: str):
         db.session.add(subnet)
         db.session.commit()
         
+        # Convert UUID to integer for gcloud CLI compatibility
+        id_as_int = int(subnet.id.hex[:16], 16) % (10**19)
+        
         # Return operation instead of subnet object
         operation = create_operation(
             project_id=project_id,
             operation_type='insert',
             target_link=subnet.get_self_link(project_id),
-            target_id=str(subnet.id),
+            target_id=str(id_as_int),
             region=region
         )
         return jsonify(operation.to_dict()), 200
@@ -353,12 +356,15 @@ def delete_subnetwork(project_id: str, region: str, subnet_name: str):
         db.session.delete(subnet)
         db.session.commit()
         
+        # Convert UUID to integer for gcloud CLI compatibility
+        id_as_int = int(subnet.id.hex[:16], 16) % (10**19)
+        
         # Return operation
         operation = create_operation(
             project_id=project_id,
             operation_type='delete',
             target_link=subnet.get_self_link(project_id),
-            target_id=str(subnet.id),
+            target_id=str(id_as_int),
             region=region
         )
         return jsonify(operation.to_dict()), 200
