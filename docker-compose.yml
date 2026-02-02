@@ -23,7 +23,7 @@ services:
 
   backend:
     build:
-      context: ./gcp-emulator-package
+      context: ./gcp-stimulator-package
       dockerfile: Dockerfile
     container_name: gcs-emulator-backend
     depends_on:
@@ -43,7 +43,7 @@ services:
 
   frontend:
     build:
-      context: ./gcp-emulator-ui
+      context: ./gcp-stimulator-ui
       dockerfile: Dockerfile
     container_name: gcs-emulator-frontend
     depends_on:
