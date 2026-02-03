@@ -3,7 +3,7 @@ import { useParams, Link } from 'react-router-dom';
 import { useObjects } from '../hooks/useObjects';
 import { downloadObject } from '../api/objects';
 import { format } from 'date-fns';
-import { Download, Trash2, Upload, Settings, Lock, Unlock } from 'lucide-react';
+import { Download, Trash2, Upload, Settings, Lock, Unlock, FileText, Clock, HardDrive } from 'lucide-react';
 import UploadObjectModal from '../components/UploadObjectModal';
 import Spinner from '../components/common/Spinner';
 import EmptyState from '../components/common/EmptyState';
@@ -12,6 +12,7 @@ import DropdownFilter from '../components/common/DropdownFilter';
 import Pagination from '../components/common/Pagination';
 import SecurityBanner from '../components/common/SecurityBanner';
 import BucketSettingsModal from '../components/BucketSettingsModal';
+import { Modal } from '../components/Modal';
 import { ACLValue } from '../types';
 import { getBucketACL } from '../api/buckets';
 import toast from 'react-hot-toast';
@@ -30,6 +31,8 @@ const BucketDetails = () => {
   const { objects, isLoading, error, refresh, handleDelete } = useObjects(bucketName!);
   const [isUploadModalOpen, setUploadModalOpen] = useState(false);
   const [isSettingsModalOpen, setSettingsModalOpen] = useState(false);
+  const [isObjectDetailsOpen, setObjectDetailsOpen] = useState(false);
+  const [selectedObject, setSelectedObject] = useState<any>(null);
 
   const [searchTerm, setSearchTerm] = useState("");
   const [contentTypeFilter, setContentTypeFilter] = useState("");
@@ -165,15 +168,18 @@ const BucketDetails = () => {
                 {paginatedObjects.map((obj, index) => (
                   <tr key={`${obj.name}-${obj.generation}-${index}`} className="hover:bg-gray-50 transition-colors">
                     <td className="px-6 py-4 text-sm font-medium text-gray-900">
-                      <Link 
-                        to={`/services/storage/buckets/${bucketName}/objects/${encodeURIComponent(obj.name)}`} 
+                      <button 
+                        onClick={() => {
+                          setSelectedObject(obj);
+                          setObjectDetailsOpen(true);
+                        }}
                         className="text-blue-600 hover:text-blue-800 hover:underline flex items-center gap-2"
                       >
                         <svg className="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
                         </svg>
                         <span className="truncate max-w-md">{obj.name}</span>
-                      </Link>
+                      </button>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600 font-mono">
                       {(obj.size / 1024).toFixed(2)} KB
@@ -220,82 +226,116 @@ const BucketDetails = () => {
   };
 
   return (
-    <div className="p-6">
+    <div className="min-h-screen bg-gray-50">
       <SecurityBanner />
       
-      <div className="mb-8">
-        <div className="flex items-center justify-between mb-4">
-          <div>
-            <h1 className="text-3xl font-bold text-gray-900 mb-2">
-              <span className="font-mono bg-gray-100 px-3 py-1 rounded-lg">{bucketName}</span>
-            </h1>
-            {/* Phase 4: Bucket ACL Badge */}
-            <div className="flex items-center space-x-3">
-              {isLoadingACL ? (
-                <div className="animate-spin h-4 w-4 border-2 border-indigo-600 border-t-transparent rounded-full"></div>
-              ) : (
-                <>
-                  <span className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium ${
+      {/* Header Section */}
+      <div className="bg-white border-b border-gray-200 shadow-sm">
+        <div className="max-w-[1280px] mx-auto px-8 py-6">
+          <div className="flex items-center justify-between mb-4">
+            <div>
+              <div className="flex items-center gap-3 mb-2">
+                <Link 
+                  to="/services/storage"
+                  className="text-gray-500 hover:text-gray-700 transition-colors"
+                >
+                  <HardDrive className="w-5 h-5" />
+                </Link>
+                <span className="text-gray-400">/</span>
+                <h1 className="text-2xl font-bold text-gray-900">
+                  {bucketName}
+                </h1>
+              </div>
+              {/* Bucket ACL Badge */}
+              <div className="flex items-center space-x-3">
+                {isLoadingACL ? (
+                  <div className="animate-spin h-4 w-4 border-2 border-blue-600 border-t-transparent rounded-full"></div>
+                ) : (
+                  <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium ${
                     bucketACL === 'private' 
                       ? 'bg-gray-100 text-gray-700 border border-gray-200' 
                       : 'bg-orange-100 text-orange-700 border border-orange-200'
                   }`}>
                     {bucketACL === 'private' ? (
-                      <Lock size={14} />
+                      <Lock size={12} />
                     ) : (
-                      <Unlock size={14} />
+                      <Unlock size={12} />
                     )}
                     {bucketACL}
                   </span>
-                  <span className="text-sm text-gray-500">
-                    {objects.length} {objects.length === 1 ? 'object' : 'objects'}
-                  </span>
-                </>
-              )}
+                )}
+              </div>
+            </div>
+            <div className="flex items-center gap-3">
+              <button
+                onClick={() => setSettingsModalOpen(true)}
+                className="inline-flex items-center gap-2 px-4 h-10 bg-white text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-50 transition-all text-[13px] font-medium"
+              >
+                <Settings size={16} />
+                Settings
+              </button>
+              <button
+                onClick={() => setUploadModalOpen(true)}
+                className="inline-flex items-center gap-2 px-4 h-10 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-all shadow-sm hover:shadow-md text-[13px] font-medium"
+              >
+                <Upload size={16} />
+                Upload Object
+              </button>
             </div>
           </div>
-          <div className="flex space-x-3">
-            <button
-              onClick={() => setSettingsModalOpen(true)}
-              className="inline-flex items-center gap-2 px-4 py-2.5 border border-gray-300 text-sm font-medium rounded-lg shadow-sm text-gray-700 bg-white hover:bg-gray-50 transition-colors"
-            >
-              <Settings size={18} />
-              Settings
-            </button>
-            <button
-              onClick={() => setUploadModalOpen(true)}
-              className="inline-flex items-center gap-2 px-5 py-2.5 border border-transparent text-sm font-medium rounded-lg shadow-sm text-white bg-blue-600 hover:bg-blue-700 transition-colors"
-            >
-              <Upload size={18} />
-              Upload
-            </button>
+
+          {/* Quick Stats */}
+          <div className="flex items-center gap-6 pt-4 border-t border-gray-200">
+            <div className="flex items-center gap-2 px-3 py-2">
+              <div className="w-2 h-2 bg-blue-500 rounded-full"></div>
+              <span className="text-[13px] text-gray-600">
+                <span className="font-semibold text-gray-900">{objects.length}</span> {objects.length === 1 ? 'Object' : 'Objects'}
+              </span>
+            </div>
+            <div className="flex items-center gap-2 px-3 py-2">
+              <div className="w-2 h-2 bg-purple-500 rounded-full"></div>
+              <span className="text-[13px] text-gray-600">
+                <span className="font-semibold text-gray-900">{(objects.reduce((acc, obj) => acc + obj.size, 0) / 1024).toFixed(2)}</span> KB Total
+              </span>
+            </div>
+            <div className="flex items-center gap-2 px-3 py-2">
+              <div className="w-2 h-2 bg-green-500 rounded-full"></div>
+              <span className="text-[13px] text-gray-600">
+                Storage Class: <span className="font-semibold text-gray-900">STANDARD</span>
+              </span>
+            </div>
           </div>
         </div>
       </div>
 
-      <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-4 mb-6">
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          <SearchInput
-            value={searchTerm}
-            onChange={setSearchTerm}
-            placeholder="Search by object name..."
-          />
-          <DropdownFilter
-            label="Content Type"
-            value={contentTypeFilter}
-            onChange={setContentTypeFilter}
-            options={contentTypeOptions}
-          />
-          <DropdownFilter
-            label="Size Range"
-            value={sizeRangeFilter}
-            onChange={setSizeRangeFilter}
-            options={SIZE_RANGE_OPTIONS}
-          />
+      {/* Main Content */}
+      <div className="max-w-[1280px] mx-auto px-8 py-8">
+        {/* Filters Section */}
+        <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-4 mb-6">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <SearchInput
+              value={searchTerm}
+              onChange={setSearchTerm}
+              placeholder="Search by object name..."
+            />
+            <DropdownFilter
+              label="Content Type"
+              value={contentTypeFilter}
+              onChange={setContentTypeFilter}
+              options={contentTypeOptions}
+            />
+            <DropdownFilter
+              label="Size Range"
+              value={sizeRangeFilter}
+              onChange={setSizeRangeFilter}
+              options={SIZE_RANGE_OPTIONS}
+            />
+          </div>
         </div>
-      </div>
 
-      {renderContent()}
+        {/* Objects List */}
+        {renderContent()}
+      </div>
 
       {bucketName && (
         <>
@@ -315,6 +355,92 @@ const BucketDetails = () => {
               toast.success(`✅ Bucket ACL updated to ${newACL}`);
             }}
           />
+          {selectedObject && (
+            <Modal
+              isOpen={isObjectDetailsOpen}
+              onClose={() => {
+                setObjectDetailsOpen(false);
+                setSelectedObject(null);
+              }}
+              title="Object Details"
+            >
+              <div className="space-y-6">
+                <div className="flex items-start gap-3">
+                  <FileText className="w-5 h-5 text-blue-500 mt-1" />
+                  <div className="flex-1">
+                    <h3 className="text-sm font-medium text-gray-500">Object Name</h3>
+                    <p className="mt-1 text-lg font-semibold text-gray-900 break-all">{selectedObject.name}</p>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <h3 className="text-sm font-medium text-gray-500">Size</h3>
+                    <p className="mt-1 text-base text-gray-900 font-mono">{(selectedObject.size / 1024).toFixed(2)} KB</p>
+                  </div>
+                  <div>
+                    <h3 className="text-sm font-medium text-gray-500">Content Type</h3>
+                    <p className="mt-1 text-base text-gray-900">{selectedObject.contentType || 'application/octet-stream'}</p>
+                  </div>
+                </div>
+
+                <div className="flex items-start gap-3">
+                  <Clock className="w-5 h-5 text-gray-400 mt-1" />
+                  <div className="flex-1">
+                    <h3 className="text-sm font-medium text-gray-500">Created / Updated</h3>
+                    <p className="mt-1 text-base text-gray-900">{format(new Date(selectedObject.updated), 'MMM d, yyyy, h:mm a')}</p>
+                  </div>
+                </div>
+
+                <div>
+                  <h3 className="text-sm font-medium text-gray-500 mb-2">Storage Details</h3>
+                  <div className="bg-gray-50 rounded-lg p-4 space-y-2 font-mono text-sm">
+                    <div className="flex justify-between">
+                      <span className="text-gray-500">Bucket:</span>
+                      <span className="text-gray-900">{bucketName}</span>
+                    </div>
+                    {selectedObject.generation && (
+                      <div className="flex justify-between">
+                        <span className="text-gray-500">Generation:</span>
+                        <span className="text-gray-900">{selectedObject.generation}</span>
+                      </div>
+                    )}
+                    {selectedObject.md5Hash && (
+                      <div className="flex justify-between">
+                        <span className="text-gray-500">MD5:</span>
+                        <span className="text-gray-900 break-all">{selectedObject.md5Hash}</span>
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                <div className="flex gap-3 pt-4 border-t">
+                  <button
+                    onClick={() => {
+                      handleDownload(selectedObject.name);
+                      setObjectDetailsOpen(false);
+                      setSelectedObject(null);
+                    }}
+                    className="flex-1 flex items-center justify-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+                  >
+                    <Download size={18} />
+                    Download
+                  </button>
+                  <button
+                    onClick={() => {
+                      handleDelete(selectedObject.name, selectedObject.generation);
+                      setObjectDetailsOpen(false);
+                      setSelectedObject(null);
+                    }}
+                    className="flex-1 flex items-center justify-center gap-2 px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors"
+                  >
+                    <Trash2 size={18} />
+                    Delete
+                  </button>
+                </div>
+              </div>
+            </Modal>
+          )}
         </>
       )}
     </div>

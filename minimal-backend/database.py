@@ -1,5 +1,5 @@
 """Database models and connection"""
-from sqlalchemy import create_engine, Column, String, DateTime, JSON, Boolean, Integer
+from sqlalchemy import create_engine, Column, String, DateTime, JSON, Boolean, Integer, LargeBinary
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
 from datetime import datetime
@@ -75,6 +75,50 @@ class Network(Base):
     docker_network_name = Column(String)  # Docker network name
     auto_create_subnetworks = Column(Boolean, default=True)
     creation_timestamp = Column(DateTime, default=datetime.utcnow)
+
+
+class Bucket(Base):
+    """Cloud Storage Bucket"""
+    __tablename__ = "buckets"
+    
+    id = Column(String, primary_key=True)  # bucket name
+    name = Column(String, nullable=False, unique=True)
+    project_id = Column(String)  # Match existing column name
+    location = Column(String, default="US")
+    storage_class = Column(String, default="STANDARD")
+    versioning_enabled = Column(Boolean, default=False)
+    acl = Column(String)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    meta = Column(JSON)
+    cors = Column(String)
+    notification_configs = Column(String)
+    lifecycle_config = Column(String)
+
+
+class Object(Base):
+    """Cloud Storage Object"""
+    __tablename__ = "objects"
+    
+    id = Column(String, primary_key=True)
+    bucket_id = Column(String, nullable=False)  # Match actual column
+    name = Column(String, nullable=False)
+    generation = Column(Integer, default=1)
+    size = Column(Integer)
+    content_type = Column(String)
+    md5_hash = Column(String)
+    crc32c_hash = Column(String)  # Match actual column name
+    file_path = Column(String)  # File system path, not binary content
+    metageneration = Column(Integer, default=1)
+    storage_class = Column(String)
+    acl = Column(String)
+    is_latest = Column(Boolean, default=True)
+    deleted = Column(Boolean, default=False)
+    time_created = Column(DateTime)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    meta = Column(JSON)
+
 
 # Don't create tables - they already exist in RDS
 # Base.metadata.create_all(engine)

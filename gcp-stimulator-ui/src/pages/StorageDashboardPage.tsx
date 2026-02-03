@@ -6,11 +6,13 @@ import { useEffect, useState } from 'react';
 import { formatBytes } from '../utils/formatBytes';
 import { formatDistanceToNow } from 'date-fns';
 import CreateBucketModal from '../components/buckets/CreateBucketModal';
+import { Modal } from '../components/Modal';
 
 const StorageDashboardPage = () => {
   const { buckets, refresh: refreshBuckets } = useBuckets();
   const { totalObjects, totalStorageBytes, refresh: refreshStats } = useStorageStats();
   const [isCreateModalOpen, setCreateModalOpen] = useState(false);
+  const [isActivityModalOpen, setActivityModalOpen] = useState(false);
 
   useEffect(() => {
     refreshBuckets();
@@ -23,30 +25,29 @@ const StorageDashboardPage = () => {
     refreshStats();
   };
 
-  // Get recent buckets (top 3, sorted by time created)
-  const recentBuckets = [...buckets]
-    .sort((a, b) => new Date(b.timeCreated).getTime() - new Date(a.timeCreated).getTime())
-    .slice(0, 3);
+  // Get all buckets sorted by time created
+  const sortedBuckets = [...buckets]
+    .sort((a, b) => new Date(b.timeCreated).getTime() - new Date(a.timeCreated).getTime());
 
   return (
     <div className="min-h-screen bg-[#f8f9fa]">
       {/* Hero Header */}
       <div className="bg-white border-b border-gray-200">
-        <div className="max-w-[1280px] mx-auto px-8 py-8">
-          <div className="flex items-start gap-4 mb-6">
-            <div className="p-3 bg-blue-50 rounded-xl">
-              <HardDrive className="w-8 h-8 text-blue-600" />
+        <div className="max-w-[1280px] mx-auto px-8 py-6">
+          <div className="flex items-center justify-between mb-4">
+            <div>
+              <div className="flex items-start gap-4 mb-2">
+                <div className="p-3 bg-blue-50 rounded-xl">
+                  <HardDrive className="w-8 h-8 text-blue-600" />
+                </div>
+                <div className="flex-1">
+                  <h1 className="text-[28px] font-bold text-gray-900 mb-2">Cloud Storage</h1>
+                  <p className="text-[14px] text-gray-600 leading-relaxed">
+                    Object storage emulator with full bucket & object lifecycle support.
+                  </p>
+                </div>
+              </div>
             </div>
-            <div className="flex-1">
-              <h1 className="text-[28px] font-bold text-gray-900 mb-2">Cloud Storage</h1>
-              <p className="text-[14px] text-gray-600 leading-relaxed">
-                Object storage emulator with full bucket & object lifecycle support.
-              </p>
-            </div>
-          </div>
-
-          {/* Action Buttons */}
-          <div className="flex items-center gap-3">
             <button
               onClick={() => setCreateModalOpen(true)}
               className="inline-flex items-center gap-2 px-4 h-10 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-all shadow-sm hover:shadow-md text-[13px] font-medium"
@@ -54,30 +55,26 @@ const StorageDashboardPage = () => {
               <Plus className="w-4 h-4" />
               Create Bucket
             </button>
-            <Link
-              to="/services/storage/buckets"
-              className="inline-flex items-center gap-2 px-4 h-10 bg-white text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-50 transition-all text-[13px] font-medium"
-            >
-              <FolderOpen className="w-4 h-4" />
-              Browse Buckets
-            </Link>
           </div>
 
           {/* Quick Stats */}
-          <div className="flex items-center gap-6 mt-6 pt-6 border-t border-gray-200">
-            <div className="flex items-center gap-2">
+          <div className="flex items-center gap-6 pt-4 border-t border-gray-200">
+            <div className="flex items-center gap-2 px-3 py-2">
               <div className="w-2 h-2 bg-blue-500 rounded-full"></div>
               <span className="text-[13px] text-gray-600">
                 <span className="font-semibold text-gray-900">{buckets.length}</span> Buckets
               </span>
             </div>
-            <div className="flex items-center gap-2">
-              <div className="w-2 h-2 bg-purple-500 rounded-full"></div>
+            <button
+              onClick={() => setActivityModalOpen(true)}
+              className="flex items-center gap-2 hover:bg-purple-50 px-3 py-2 rounded-lg transition-colors cursor-pointer group"
+            >
+              <div className="w-2 h-2 bg-purple-500 rounded-full group-hover:scale-125 transition-transform"></div>
               <span className="text-[13px] text-gray-600">
-                <span className="font-semibold text-gray-900">{totalObjects}</span> Objects
+                <span className="font-semibold text-gray-900 group-hover:text-purple-600">{totalObjects}</span> Objects
               </span>
-            </div>
-            <div className="flex items-center gap-2">
+            </button>
+            <div className="flex items-center gap-2 px-3 py-2">
               <div className="w-2 h-2 bg-green-500 rounded-full"></div>
               <span className="text-[13px] text-gray-600">
                 <span className="font-semibold text-gray-900">{formatBytes(totalStorageBytes)}</span> Used
@@ -89,86 +86,30 @@ const StorageDashboardPage = () => {
 
       {/* Main Content */}
       <div className="max-w-[1280px] mx-auto px-8 py-8">
-        {/* Quick Actions */}
+        {/* Buckets */}
         <div className="mb-8">
-          <h2 className="text-[16px] font-bold text-gray-900 mb-4">Quick Actions</h2>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            <Link
-              to="/services/storage/buckets"
-              className="bg-white rounded-lg border border-gray-200 p-5 shadow-[0_1px_3px_rgba(0,0,0,0.07)] hover:shadow-[0_4px_12px_rgba(0,0,0,0.12)] hover:border-blue-400/60 transition-all group"
-            >
-              <div className="flex items-center gap-3 mb-3">
-                <div className="p-2 bg-blue-50 rounded-lg group-hover:bg-blue-100 transition-colors">
-                  <FolderOpen className="w-5 h-5 text-blue-600" />
-                </div>
-                <h3 className="text-[14px] font-semibold text-gray-900">Browse</h3>
-              </div>
-              <p className="text-[12px] text-gray-600">View and manage all buckets</p>
-            </Link>
-
-            <button
-              onClick={() => setCreateModalOpen(true)}
-              className="bg-white rounded-lg border border-gray-200 p-5 shadow-[0_1px_3px_rgba(0,0,0,0.07)] hover:shadow-[0_4px_12px_rgba(0,0,0,0.12)] hover:border-green-400/60 transition-all group text-left"
-            >
-              <div className="flex items-center gap-3 mb-3">
-                <div className="p-2 bg-green-50 rounded-lg group-hover:bg-green-100 transition-colors">
-                  <Plus className="w-5 h-5 text-green-600" />
-                </div>
-                <h3 className="text-[14px] font-semibold text-gray-900">Create</h3>
-              </div>
-              <p className="text-[12px] text-gray-600">Set up a new bucket</p>
-            </button>
-
-            <Link
-              to="/services/storage/activity"
-              className="bg-white rounded-lg border border-gray-200 p-5 shadow-[0_1px_3px_rgba(0,0,0,0.07)] hover:shadow-[0_4px_12px_rgba(0,0,0,0.12)] hover:border-purple-400/60 transition-all group"
-            >
-              <div className="flex items-center gap-3 mb-3">
-                <div className="p-2 bg-purple-50 rounded-lg group-hover:bg-purple-100 transition-colors">
-                  <Activity className="w-5 h-5 text-purple-600" />
-                </div>
-                <h3 className="text-[14px] font-semibold text-gray-900">View Logs</h3>
-              </div>
-              <p className="text-[12px] text-gray-600">Monitor activity and events</p>
-            </Link>
-          </div>
-        </div>
-
-        {/* Recent Buckets */}
-        <div>
-          <h2 className="text-[16px] font-bold text-gray-900 mb-4">Recent Buckets</h2>
+          <h2 className="text-[16px] font-bold text-gray-900 mb-4">Buckets</h2>
           <div className="bg-white rounded-lg border border-gray-200 shadow-[0_1px_3px_rgba(0,0,0,0.07)]">
-            {recentBuckets.length > 0 ? (
-              <>
-                <div className="divide-y divide-gray-200">
-                  {recentBuckets.map((bucket) => (
-                    <Link
-                      key={bucket.name}
-                      to={`/services/storage/buckets/${bucket.name}`}
-                      className="flex items-center justify-between p-4 hover:bg-gray-50 transition-colors group"
-                    >
-                      <div className="flex items-center gap-3">
-                        <div className="p-2 bg-blue-50 rounded-lg group-hover:bg-blue-100 transition-colors">
-                          <HardDrive className="w-4 h-4 text-blue-600" />
-                        </div>
-                        <span className="text-[14px] font-medium text-gray-900">{bucket.name}</span>
-                      </div>
-                      <span className="text-[12px] text-gray-500">
-                        Updated {formatDistanceToNow(new Date(bucket.timeCreated), { addSuffix: true })}
-                      </span>
-                    </Link>
-                  ))}
-                </div>
-                <div className="border-t border-gray-200">
+            {sortedBuckets.length > 0 ? (
+              <div className="divide-y divide-gray-200">
+                {sortedBuckets.map((bucket) => (
                   <Link
-                    to="/services/storage/buckets"
-                    className="flex items-center justify-center gap-2 p-3 text-[13px] font-medium text-blue-600 hover:bg-blue-50 transition-colors"
+                    key={bucket.name}
+                    to={`/services/storage/buckets/${bucket.name}`}
+                    className="flex items-center justify-between p-4 hover:bg-gray-50 transition-colors group"
                   >
-                    View All
-                    <ArrowRight className="w-4 h-4" />
+                    <div className="flex items-center gap-3">
+                      <div className="p-2 bg-blue-50 rounded-lg group-hover:bg-blue-100 transition-colors">
+                        <HardDrive className="w-4 h-4 text-blue-600" />
+                      </div>
+                      <span className="text-[14px] font-medium text-gray-900">{bucket.name}</span>
+                    </div>
+                    <span className="text-[12px] text-gray-500">
+                      Updated {formatDistanceToNow(new Date(bucket.timeCreated), { addSuffix: true })}
+                    </span>
                   </Link>
-                </div>
-              </>
+                ))}
+              </div>
             ) : (
               <div className="p-8 text-center">
                 <p className="text-[13px] text-gray-500">No buckets yet</p>
@@ -183,6 +124,41 @@ const StorageDashboardPage = () => {
             )}
           </div>
         </div>
+
+        {/* Recent Activity */}
+        <div className="mt-8">
+          <h2 className="text-[16px] font-bold text-gray-900 mb-4">Recent Activity</h2>
+          <div className="bg-white rounded-lg border border-gray-200 shadow-[0_1px_3px_rgba(0,0,0,0.07)]">
+            <div className="divide-y divide-gray-200">
+              {buckets.slice(0, 5).map((bucket, index) => (
+                <div key={bucket.name} className="flex items-center justify-between p-4 hover:bg-gray-50 transition-colors">
+                  <div className="flex items-center gap-3">
+                    <div className="p-2 bg-gray-50 rounded-lg">
+                      <Activity className="w-4 h-4 text-gray-600" />
+                    </div>
+                    <div>
+                      <p className="text-[13px] font-medium text-gray-900">
+                        Bucket created: <span className="text-blue-600">{bucket.name}</span>
+                      </p>
+                      <p className="text-[12px] text-gray-500">
+                        {bucket.location} • {bucket.storageClass}
+                      </p>
+                    </div>
+                  </div>
+                  <span className="text-[12px] text-gray-500">
+                    {formatDistanceToNow(new Date(bucket.timeCreated), { addSuffix: true })}
+                  </span>
+                </div>
+              ))}
+              {buckets.length === 0 && (
+                <div className="p-8 text-center">
+                  <Activity className="w-12 h-12 text-gray-300 mx-auto mb-3" />
+                  <p className="text-[13px] text-gray-500">No recent activity</p>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
       </div>
 
       <CreateBucketModal
@@ -190,6 +166,42 @@ const StorageDashboardPage = () => {
         onClose={() => setCreateModalOpen(false)}
         onBucketCreated={handleBucketCreated}
       />
+
+      {/* Object Activity Modal */}
+      <Modal
+        isOpen={isActivityModalOpen}
+        onClose={() => setActivityModalOpen(false)}
+        title="Recent Object Activity"
+      >
+        <div className="space-y-2">
+          {buckets.slice(0, 10).map((bucket) => (
+            <div key={bucket.name} className="p-3 hover:bg-gray-50 rounded-lg transition-colors">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <div className="p-2 bg-purple-50 rounded-lg">
+                    <HardDrive className="w-4 h-4 text-purple-600" />
+                  </div>
+                  <div>
+                    <p className="text-[13px] font-medium text-gray-900">
+                      Objects in <Link to={`/services/storage/buckets/${bucket.name}`} className="text-blue-600 hover:underline">{bucket.name}</Link>
+                    </p>
+                    <p className="text-[12px] text-gray-500">{bucket.location} • {bucket.storageClass}</p>
+                  </div>
+                </div>
+                <span className="text-[12px] text-gray-500">
+                  {formatDistanceToNow(new Date(bucket.timeCreated), { addSuffix: true })}
+                </span>
+              </div>
+            </div>
+          ))}
+          {buckets.length === 0 && (
+            <div className="text-center py-8">
+              <Activity className="w-12 h-12 text-gray-300 mx-auto mb-3" />
+              <p className="text-[13px] text-gray-500">No object activity yet</p>
+            </div>
+          )}
+        </div>
+      </Modal>
     </div>
   );
 };

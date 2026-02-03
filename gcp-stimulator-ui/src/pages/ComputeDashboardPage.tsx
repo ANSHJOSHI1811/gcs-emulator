@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Cpu, Server, MapPin, Settings, Plus, StopCircle, Play, Trash2 } from 'lucide-react';
+import { Cpu, Server, MapPin, Settings, Plus, StopCircle, Play, Trash2, HardDrive, Network } from 'lucide-react';
 import { apiClient } from '../api/client';
 import { Modal, ModalFooter, ModalButton } from '../components/Modal';
 import { FormField, Input, Select } from '../components/FormFields';
@@ -37,18 +37,30 @@ interface Instance {
   dockerContainerName?: string;
 }
 
+interface Network {
+  name: string;
+  id: string;
+  autoCreateSubnetworks: boolean;
+}
+
 const ComputeDashboardPage = () => {
   const [zones, setZones] = useState<Zone[]>([]);
   const [instances, setInstances] = useState<Instance[]>([]);
   const [machineTypes, setMachineTypes] = useState<MachineType[]>([]);
+  const [networks, setNetworks] = useState<Network[]>([]);
   const [loading, setLoading] = useState(true);
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [createLoading, setCreateLoading] = useState(false);
+  const [selectedInstance, setSelectedInstance] = useState<Instance | null>(null);
+  const [isInstanceDetailsOpen, setInstanceDetailsOpen] = useState(false);
+  const [actionLoading, setActionLoading] = useState(false);
+  const [statusFilter, setStatusFilter] = useState<string | null>(null);
   const { currentProject } = useProject();
   const [formData, setFormData] = useState({
     name: '',
     zone: 'us-central1-a',
-    machineType: 'n1-standard-1'
+    machineType: 'n1-standard-1',
+    network: 'default'
   });
 
   // Helper function to extract resource name from GCP URL
@@ -86,6 +98,10 @@ const ComputeDashboardPage = () => {
       const zonesRes = await apiClient.get(`/compute/v1/projects/${currentProject}/zones`);
       const zonesList = zonesRes.data.items || [];
       setZones(zonesList);
+
+      // Load networks
+      const networksRes = await apiClient.get(`/compute/v1/projects/${currentProject}/global/networks`);
+      setNetworks(networksRes.data.items || []);
 
       // Load instances from all zones
       const allInstances: Instance[] = [];
@@ -126,7 +142,13 @@ const ComputeDashboardPage = () => {
         return 'bg-gray-100 text-gray-800';
       case 'STAGING':
       case 'PROVISIONING':
+      case 'STARTING':
         return 'bg-yellow-100 text-yellow-800';
+      case 'STOPPING':
+      case 'TERMINATING':
+        return 'bg-orange-100 text-orange-800';
+      case 'DELETING':
+        return 'bg-red-100 text-red-800';
       default:
         return 'bg-blue-100 text-blue-800';
     }
@@ -141,6 +163,11 @@ const ComputeDashboardPage = () => {
         {
           name: formData.name,
           machineType: formData.machineType,
+          networkInterfaces: [
+            {
+              network: `projects/${currentProject}/global/networks/${formData.network}`
+            }
+          ],
           disks: [
             {
               boot: true,
@@ -153,7 +180,7 @@ const ComputeDashboardPage = () => {
         }
       );
       setShowCreateModal(false);
-      setFormData({ name: '', zone: 'us-central1-a', machineType: 'n1-standard-1' });
+      setFormData({ name: '', zone: 'us-central1-a', machineType: 'n1-standard-1', network: 'default' });
       await loadData();
     } catch (error: any) {
       console.error('Failed to create instance:', error);
@@ -168,6 +195,11 @@ const ComputeDashboardPage = () => {
       return;
     }
     try {
+      setActionLoading(true);
+      // Optimistically update status
+      setInstances(prev => prev.map(inst => 
+        inst.name === instanceName ? { ...inst, status: 'DELETING' } : inst
+      ));
       const zone = extractResourceName(zoneName);
       await apiClient.delete(
         `/compute/v1/projects/${currentProject}/zones/${zone}/instances/${instanceName}`
@@ -176,24 +208,38 @@ const ComputeDashboardPage = () => {
     } catch (error: any) {
       console.error('Failed to delete instance:', error);
       alert(error.response?.data?.error?.message || 'Failed to delete instance');
+    } finally {
+      setActionLoading(false);
     }
   };
 
-  const handleStopInstance = async (instanceName: string, zoneName: string) => {
+  const handleStopInstance = async (instanceName: string, zone: string) => {
     try {
-      const zone = extractResourceName(zoneName);
+      setActionLoading(true);
+      // Optimistically update status
+      setInstances(prev => prev.map(inst => 
+        inst.name === instanceName ? { ...inst, status: 'STOPPING' } : inst
+      ));
+      const zoneName = extractResourceName(zone);
       await apiClient.post(
-        `/compute/v1/projects/${currentProject}/zones/${zone}/instances/${instanceName}/stop`
+        `/compute/v1/projects/${currentProject}/zones/${zoneName}/instances/${instanceName}/stop`
       );
       await loadData();
     } catch (error: any) {
       console.error('Failed to stop instance:', error);
       alert(error.response?.data?.error?.message || 'Failed to stop instance');
+    } finally {
+      setActionLoading(false);
     }
   };
 
   const handleStartInstance = async (instanceName: string, zoneName: string) => {
     try {
+      setActionLoading(true);
+      // Optimistically update status
+      setInstances(prev => prev.map(inst => 
+        inst.name === instanceName ? { ...inst, status: 'STARTING' } : inst
+      ));
       const zone = extractResourceName(zoneName);
       await apiClient.post(
         `/compute/v1/projects/${currentProject}/zones/${zone}/instances/${instanceName}/start`
@@ -202,169 +248,150 @@ const ComputeDashboardPage = () => {
     } catch (error: any) {
       console.error('Failed to start instance:', error);
       alert(error.response?.data?.error?.message || 'Failed to start instance');
-      alert(error.response?.data?.message || 'Failed to create instance');
     } finally {
-      setCreateLoading(false);
+      setActionLoading(false);
     }
   };
 
   return (
-    <div className="p-6 max-w-7xl mx-auto">
-      {/* Header */}
-      <div className="mb-8 flex items-center justify-between">
-        <div>
-          <h1 className="text-3xl font-semibold text-gray-900 flex items-center gap-3">
-            <Cpu className="w-8 h-8 text-blue-600" />
-            Compute Engine
-          </h1>
-          <p className="text-gray-600 mt-2">
-            Manage virtual machines and compute resources
-          </p>
-        </div>
-        <button
-          onClick={() => setShowCreateModal(true)}
-          className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
-        >
-          <Plus className="w-5 h-5" />
-          Create Instance
-        </button>
-      </div>
-
-      {/* Quick Stats */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
-        <div className="bg-white rounded-lg border border-gray-200 p-6">
-          <div className="flex items-center justify-between">
+    <div className="min-h-screen bg-gray-50">
+      {/* Header Section */}
+      <div className="bg-white border-b border-gray-200 shadow-sm">
+        <div className="max-w-[1280px] mx-auto px-8 py-6">
+          <div className="flex items-center justify-between mb-4">
             <div>
-              <p className="text-sm text-gray-600">VM Instances</p>
-              <p className="text-2xl font-semibold text-gray-900 mt-1">
-                {instances.length}
-              </p>
+              <div className="flex items-start gap-4 mb-2">
+                <div className="p-3 bg-blue-50 rounded-xl">
+                  <Cpu className="w-8 h-8 text-blue-600" />
+                </div>
+                <div className="flex-1">
+                  <h1 className="text-[28px] font-bold text-gray-900 mb-2">Compute Engine</h1>
+                  <p className="text-[14px] text-gray-600 leading-relaxed">
+                    Virtual machines running in Google's data center
+                  </p>
+                </div>
+              </div>
             </div>
-            <Server className="w-8 h-8 text-blue-500" />
+            <button
+              onClick={() => setShowCreateModal(true)}
+              className="inline-flex items-center gap-2 px-4 h-10 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-all shadow-sm hover:shadow-md text-[13px] font-medium"
+            >
+              <Plus className="w-4 h-4" />
+              Create Instance
+            </button>
           </div>
-        </div>
 
-        <div className="bg-white rounded-lg border border-gray-200 p-6">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-sm text-gray-600">Running</p>
-              <p className="text-2xl font-semibold text-gray-900 mt-1">
-                {instances.filter(i => i.status === 'RUNNING').length}
-              </p>
-            </div>
-            <div className="w-3 h-3 bg-green-500 rounded-full"></div>
-          </div>
-        </div>
-
-        <div className="bg-white rounded-lg border border-gray-200 p-6">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-sm text-gray-600">Zones</p>
-              <p className="text-2xl font-semibold text-gray-900 mt-1">
-                {zones.length}
-              </p>
-            </div>
-            <MapPin className="w-8 h-8 text-purple-500" />
-          </div>
-        </div>
-
-        <div className="bg-white rounded-lg border border-gray-200 p-6">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-sm text-gray-600">Machine Types</p>
-              <p className="text-2xl font-semibold text-gray-900 mt-1">
-                {machineTypes.length}
-              </p>
-            </div>
-            <Settings className="w-8 h-8 text-orange-500" />
+          {/* Quick Stats */}
+          <div className="flex items-center gap-6 pt-4 border-t border-gray-200">
+            <button
+              onClick={() => setStatusFilter(null)}
+              className={`flex items-center gap-2 px-3 py-2 rounded-lg transition-colors cursor-pointer group ${
+                statusFilter === null ? 'bg-blue-50' : 'hover:bg-blue-50'
+              }`}
+            >
+              <div className={`w-2 h-2 bg-blue-500 rounded-full ${statusFilter === null ? 'scale-125' : 'group-hover:scale-125'} transition-transform`}></div>
+              <span className="text-[13px] text-gray-600">
+                <span className={`font-semibold ${statusFilter === null ? 'text-blue-600' : 'text-gray-900 group-hover:text-blue-600'}`}>{instances.length}</span> Instances
+              </span>
+            </button>
+            <button
+              onClick={() => setStatusFilter('RUNNING')}
+              className={`flex items-center gap-2 px-3 py-2 rounded-lg transition-colors cursor-pointer group ${
+                statusFilter === 'RUNNING' ? 'bg-green-50' : 'hover:bg-green-50'
+              }`}
+            >
+              <div className={`w-2 h-2 bg-green-500 rounded-full ${statusFilter === 'RUNNING' ? 'scale-125' : 'group-hover:scale-125'} transition-transform`}></div>
+              <span className="text-[13px] text-gray-600">
+                <span className={`font-semibold ${statusFilter === 'RUNNING' ? 'text-green-600' : 'text-gray-900 group-hover:text-green-600'}`}>{instances.filter(i => i.status === 'RUNNING').length}</span> Running
+              </span>
+            </button>
+            <button
+              onClick={() => setStatusFilter('STOPPED')}
+              className={`flex items-center gap-2 px-3 py-2 rounded-lg transition-colors cursor-pointer group ${
+                statusFilter === 'STOPPED' ? 'bg-gray-100' : 'hover:bg-gray-100'
+              }`}
+            >
+              <div className={`w-2 h-2 bg-gray-500 rounded-full ${statusFilter === 'STOPPED' ? 'scale-125' : 'group-hover:scale-125'} transition-transform`}></div>
+              <span className="text-[13px] text-gray-600">
+                <span className={`font-semibold ${statusFilter === 'STOPPED' ? 'text-gray-700' : 'text-gray-900 group-hover:text-gray-700'}`}>{instances.filter(i => i.status === 'TERMINATED' || i.status === 'STOPPED').length}</span> Stopped
+              </span>
+            </button>
           </div>
         </div>
       </div>
 
-      {/* VM Instances */}
-      <div className="bg-white rounded-lg border border-gray-200 mb-8">
-        <div className="px-6 py-4 border-b border-gray-200">
-          <h2 className="text-lg font-semibold text-gray-900">VM Instances</h2>
-          <p className="text-sm text-gray-600 mt-1">
-            Manage your virtual machine instances
-          </p>
-        </div>
-
+      {/* Main Content */}
+      <div className="max-w-[1280px] mx-auto px-8 py-8">
+        {/* VM Instances */}
+        <div className="mb-8">
+          <h2 className="text-[16px] font-bold text-gray-900 mb-4">VM Instances</h2>
+          <div className="bg-white rounded-lg border border-gray-200 shadow-[0_1px_3px_rgba(0,0,0,0.07)]">
         {loading ? (
           <div className="p-12 text-center">
             <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto"></div>
             <p className="text-gray-600 mt-4">Loading instances...</p>
           </div>
-        ) : instances.length === 0 ? (
+        ) : (() => {
+          const filteredInstances = statusFilter === null
+            ? instances
+            : statusFilter === 'RUNNING'
+            ? instances.filter(i => i.status?.toUpperCase() === 'RUNNING')
+            : instances.filter(i => {
+                const status = i.status?.toUpperCase();
+                return status === 'TERMINATED' || status === 'STOPPED' || status === 'STOPPING' || status === 'TERMINATING';
+              });
+          
+          return filteredInstances.length === 0 ? (
           <div className="p-12 text-center">
             <Server className="w-16 h-16 text-gray-300 mx-auto mb-4" />
             <h3 className="text-lg font-medium text-gray-900 mb-2">No instances yet</h3>
             <p className="text-gray-600 mb-6">
               Create a VM instance to get started with Compute Engine
             </p>
+            <button
+              onClick={() => setShowCreateModal(true)}
+              className="inline-flex items-center gap-2 px-4 h-9 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-all text-[13px] font-medium"
+            >
+              <Plus className="w-4 h-4" />
+              Create Your First Instance
+            </button>
           </div>
         ) : (
           <div className="overflow-x-auto">
             <table className="min-w-full divide-y divide-gray-200">
               <thead className="bg-gray-50">
                 <tr>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  <th className="px-6 py-4 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">
                     Name
                   </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  <th className="px-6 py-4 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">
                     Zone
                   </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Machine Type
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Internal IP
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    External IP
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Container ID
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  <th className="px-6 py-4 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">
                     Status
                   </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  <th className="px-6 py-4 text-right text-xs font-semibold text-gray-700 uppercase tracking-wider">
                     Actions
                   </th>
                 </tr>
               </thead>
-              <tbody className="bg-white divide-y divide-gray-200">
-                {instances.map((instance) => (
-                  <tr key={instance.id} className="hover:bg-gray-50">
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      <div className="flex items-center">
-                        <Server className="w-5 h-5 text-gray-400 mr-3" />
-                        <span className="text-sm font-medium text-gray-900">
-                          {instance.name}
-                        </span>
-                      </div>
+              <tbody className="bg-white divide-y divide-gray-100">
+                {filteredInstances.map((instance) => (
+                  <tr key={instance.id} className="hover:bg-gray-50 transition-colors">
+                    <td className="px-6 py-4 text-sm font-medium text-gray-900">
+                      <button
+                        onClick={() => {
+                          setSelectedInstance(instance);
+                          setInstanceDetailsOpen(true);
+                        }}
+                        className="text-blue-600 hover:text-blue-800 hover:underline flex items-center gap-2"
+                      >
+                        <Server className="w-4 h-4 text-gray-400" />
+                        <span>{instance.name}</span>
+                      </button>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">
                       {extractResourceName(instance.zone)}
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">
-                      {extractResourceName(instance.machineType)}
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">
-                      {getInternalIp(instance)}
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">
-                      {getExternalIp(instance)}
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600 font-mono">
-                      {instance.dockerContainerId ? (
-                        <span className="text-xs bg-gray-100 px-2 py-1 rounded" title={instance.dockerContainerId}>
-                          {instance.dockerContainerId.substring(0, 12)}
-                        </span>
-                      ) : (
-                        '-'
-                      )}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
                       <span
@@ -375,31 +402,31 @@ const ComputeDashboardPage = () => {
                         {instance.status}
                       </span>
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm">
-                      <div className="flex items-center space-x-2">
+                    <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
+                      <div className="flex items-center justify-end gap-2">
                         {instance.status === 'RUNNING' ? (
                           <button
                             onClick={() => handleStopInstance(instance.name, instance.zone)}
-                            className="text-orange-600 hover:text-orange-800 p-1 rounded hover:bg-orange-50 transition-colors"
-                            title="Stop instance"
+                            className="p-2 text-orange-600 hover:bg-orange-50 rounded-lg transition-colors"
+                            title="Stop"
                           >
-                            <StopCircle className="w-5 h-5" />
+                            <StopCircle size={18} />
                           </button>
                         ) : instance.status === 'TERMINATED' || instance.status === 'STOPPED' ? (
                           <button
                             onClick={() => handleStartInstance(instance.name, instance.zone)}
-                            className="text-green-600 hover:text-green-800 p-1 rounded hover:bg-green-50"
-                            title="Start instance"
+                            className="p-2 text-green-600 hover:bg-green-50 rounded-lg transition-colors"
+                            title="Start"
                           >
-                            <Play className="w-5 h-5" />
+                            <Play size={18} />
                           </button>
                         ) : null}
                         <button
                           onClick={() => handleDeleteInstance(instance.name, instance.zone)}
-                          className="p-1 text-red-600 hover:text-red-800 hover:bg-red-50 rounded"
-                          title="Delete instance"
+                          className="p-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                          title="Delete"
                         >
-                          <Trash2 className="w-4 h-4" />
+                          <Trash2 size={18} />
                         </button>
                       </div>
                     </td>
@@ -408,56 +435,43 @@ const ComputeDashboardPage = () => {
               </tbody>
             </table>
           </div>
-        )}
-      </div>
-
-      {/* Zones List */}
-      <div className="bg-white rounded-lg border border-gray-200">
-        <div className="px-6 py-4 border-b border-gray-200">
-          <h2 className="text-lg font-semibold text-gray-900">Available Zones</h2>
-          <p className="text-sm text-gray-600 mt-1">
-            Zones where you can deploy VM instances
-          </p>
+        );
+        })()}
+          </div>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 p-6">
-          {zones.map((zone) => (
-            <div
-              key={zone.id}
-              className="border border-gray-200 rounded-lg p-4 hover:border-blue-300 hover:shadow-sm transition-all"
-            >
-              <div className="flex items-start justify-between">
-                <div>
-                  <h3 className="font-medium text-gray-900">{zone.name}</h3>
-                  <p className="text-sm text-gray-600 mt-1">Region: {zone.region}</p>
+        {/* Recent Activity */}
+        <div className="mt-8">
+          <h2 className="text-[16px] font-bold text-gray-900 mb-4">Recent Activity</h2>
+          <div className="bg-white rounded-lg border border-gray-200 shadow-[0_1px_3px_rgba(0,0,0,0.07)]">
+            <div className="divide-y divide-gray-200">
+              {instances.slice(0, 5).map((instance, index) => (
+                <div key={instance.id} className="flex items-center justify-between p-4 hover:bg-gray-50 transition-colors">
+                  <div className="flex items-center gap-3">
+                    <div className="p-2 bg-gray-50 rounded-lg">
+                      <Server className="w-4 h-4 text-gray-600" />
+                    </div>
+                    <div>
+                      <p className="text-[13px] font-medium text-gray-900">
+                        Instance: <span className="text-blue-600">{instance.name}</span>
+                      </p>
+                      <p className="text-[12px] text-gray-500">
+                        {extractResourceName(instance.zone)} • {extractResourceName(instance.machineType)}
+                      </p>
+                    </div>
+                  </div>
+                  <span className={`px-2 py-1 text-xs font-medium rounded-full ${getStatusColor(instance.status)}`}>
+                    {instance.status}
+                  </span>
                 </div>
-                <MapPin className="w-5 h-5 text-gray-400" />
-              </div>
-              <div className="mt-3">
-                <span className="px-2 py-1 text-xs font-medium rounded-full bg-green-100 text-green-800">
-                  {zone.status}
-                </span>
-              </div>
+              ))}
+              {instances.length === 0 && (
+                <div className="p-8 text-center">
+                  <Server className="w-12 h-12 text-gray-300 mx-auto mb-3" />
+                  <p className="text-[13px] text-gray-500">No recent activity</p>
+                </div>
+              )}
             </div>
-          ))}
-        </div>
-      </div>
-
-      {/* API Endpoints Info */}
-      <div className="mt-8 bg-blue-50 border border-blue-200 rounded-lg p-6">
-        <h3 className="text-lg font-semibold text-blue-900 mb-3">Available Compute APIs</h3>
-        <div className="space-y-2 text-sm">
-          <div className="flex items-start">
-            <code className="bg-blue-100 px-2 py-1 rounded text-blue-900 mr-3">GET</code>
-            <span className="text-blue-800">/compute/v1/projects/{'{project}'}/zones</span>
-          </div>
-          <div className="flex items-start">
-            <code className="bg-blue-100 px-2 py-1 rounded text-blue-900 mr-3">GET</code>
-            <span className="text-blue-800">/compute/v1/projects/{'{project}'}/zones/{'{zone}'}/instances</span>
-          </div>
-          <div className="flex items-start">
-            <code className="bg-blue-100 px-2 py-1 rounded text-blue-900 mr-3">POST</code>
-            <span className="text-blue-800">/compute/v1/projects/{'{project}'}/zones/{'{zone}'}/instances</span>
           </div>
         </div>
       </div>
@@ -515,6 +529,20 @@ const ComputeDashboardPage = () => {
             </Select>
           </FormField>
 
+          <FormField label="Network" required>
+            <Select
+              required
+              value={formData.network}
+              onChange={(e) => setFormData({ ...formData, network: e.target.value })}
+            >
+              {networks.map(network => (
+                <option key={network.name} value={network.name}>
+                  {network.name}
+                </option>
+              ))}
+            </Select>
+          </FormField>
+
           <div className="bg-blue-50 border-2 border-blue-100 p-4 rounded-xl">
             <p className="text-xs text-blue-900 font-medium">
               <strong className="font-bold">Note:</strong> Instance will be created with Ubuntu 20.04 LTS image and a Docker container will be automatically spawned.
@@ -538,6 +566,116 @@ const ComputeDashboardPage = () => {
           </ModalFooter>
         </form>
       </Modal>
+
+      {/* Instance Details Modal */}
+      {selectedInstance && (
+        <Modal
+          isOpen={isInstanceDetailsOpen}
+          onClose={() => {
+            setInstanceDetailsOpen(false);
+            setSelectedInstance(null);
+          }}
+          title={selectedInstance.name}
+        >
+          <div className="space-y-4">
+            {/* Status Badge */}
+            <div className="flex items-center gap-2">
+              <span className={`px-3 py-1 text-xs font-medium rounded-full ${getStatusColor(selectedInstance.status)}`}>
+                {selectedInstance.status}
+              </span>
+            </div>
+
+            {/* Details Grid */}
+            <div className="bg-gray-50 rounded-lg p-4 space-y-3">
+              <div className="flex justify-between text-sm">
+                <span className="text-gray-600">Zone</span>
+                <span className="text-gray-900 font-medium">{extractResourceName(selectedInstance.zone)}</span>
+              </div>
+              <div className="flex justify-between text-sm border-t border-gray-200 pt-3">
+                <span className="text-gray-600">Machine Type</span>
+                <span className="text-gray-900 font-medium">{extractResourceName(selectedInstance.machineType)}</span>
+              </div>
+              <div className="flex justify-between text-sm border-t border-gray-200 pt-3">
+                <span className="text-gray-600">Internal IP</span>
+                <span className="text-gray-900 font-mono text-xs">{getInternalIp(selectedInstance)}</span>
+              </div>
+              <div className="flex justify-between text-sm border-t border-gray-200 pt-3">
+                <span className="text-gray-600">External IP</span>
+                <span className="text-gray-900 font-mono text-xs">{getExternalIp(selectedInstance)}</span>
+              </div>
+              {selectedInstance.dockerContainerId && (
+                <>
+                  <div className="flex justify-between text-sm border-t border-gray-200 pt-3">
+                    <span className="text-gray-600">Container ID</span>
+                    <span className="text-gray-900 font-mono text-xs">{selectedInstance.dockerContainerId.substring(0, 12)}</span>
+                  </div>
+                  {selectedInstance.dockerContainerName && (
+                    <div className="flex justify-between text-sm border-t border-gray-200 pt-3">
+                      <span className="text-gray-600">Container Name</span>
+                      <span className="text-gray-900 font-mono text-xs">{selectedInstance.dockerContainerName}</span>
+                    </div>
+                  )}
+                </>
+              )}
+            </div>
+
+            {/* Actions */}
+            <div className="flex gap-2 pt-2">
+              {selectedInstance.status === 'RUNNING' ? (
+                <button
+                  onClick={() => {
+                    handleStopInstance(selectedInstance.name, selectedInstance.zone);
+                    setInstanceDetailsOpen(false);
+                    setSelectedInstance(null);
+                  }}
+                  disabled={actionLoading}
+                  className="flex-1 flex items-center justify-center gap-2 px-4 py-2 bg-orange-600 text-white rounded-lg hover:bg-orange-700 transition-colors text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {actionLoading ? (
+                    <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                  ) : (
+                    <StopCircle size={16} />
+                  )}
+                  Stop Instance
+                </button>
+              ) : selectedInstance.status === 'TERMINATED' || selectedInstance.status === 'STOPPED' ? (
+                <button
+                  onClick={() => {
+                    handleStartInstance(selectedInstance.name, selectedInstance.zone);
+                    setInstanceDetailsOpen(false);
+                    setSelectedInstance(null);
+                  }}
+                  disabled={actionLoading}
+                  className="flex-1 flex items-center justify-center gap-2 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {actionLoading ? (
+                    <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                  ) : (
+                    <Play size={16} />
+                  )}
+                  Start Instance
+                </button>
+              ) : null}
+              <button
+                onClick={() => {
+                  handleDeleteInstance(selectedInstance.name, selectedInstance.zone);
+                  setInstanceDetailsOpen(false);
+                  setSelectedInstance(null);
+                }}
+                disabled={actionLoading}
+                className="flex items-center justify-center gap-2 px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {actionLoading ? (
+                  <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                ) : (
+                  <Trash2 size={16} />
+                )}
+                Delete
+              </button>
+            </div>
+          </div>
+        </Modal>
+      )}
     </div>
   );
 };

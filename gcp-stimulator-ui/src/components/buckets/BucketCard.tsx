@@ -1,7 +1,8 @@
 import { Bucket } from "../../types";
 import { formatDistanceToNow } from "date-fns";
-import { Trash2, HardDrive, MapPin, Clock } from "lucide-react";
+import { Trash2, HardDrive, MapPin, Clock, Settings, Lock, Unlock } from "lucide-react";
 import { Link } from "react-router-dom";
+import { useState } from "react";
 
 interface BucketCardProps {
   bucket: Bucket;
@@ -9,6 +10,8 @@ interface BucketCardProps {
 }
 
 export default function BucketCard({ bucket, onDelete }: BucketCardProps) {
+  const [isLocked, setIsLocked] = useState(false);
+
   const handleDelete = (e: React.MouseEvent) => {
     e.preventDefault();
     e.stopPropagation();
@@ -21,6 +24,18 @@ export default function BucketCard({ bucket, onDelete }: BucketCardProps) {
     if (confirmed) {
       onDelete();
     }
+  };
+
+  const toggleLock = (e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsLocked(!isLocked);
+  };
+
+  const openSettings = (e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    // Settings modal would open here
   };
 
   const getStorageClassColor = (storageClass: string) => {
@@ -60,25 +75,47 @@ export default function BucketCard({ bucket, onDelete }: BucketCardProps) {
           </div>
         </div>
 
-        {/* Bottom Row: Storage Class + Location */}
-        <div className="flex items-center gap-3">
-          <span className={`inline-flex items-center text-[11px] font-semibold px-2.5 py-1 rounded-full border shadow-sm ${getStorageClassColor(bucket.storageClass)}`}>
-            {bucket.storageClass}
-          </span>
-          <div className="flex items-center gap-1.5 text-[12px] text-gray-600">
-            <MapPin className="w-3.5 h-3.5 text-gray-400 flex-shrink-0" />
-            <span className="truncate">{bucket.location}</span>
+        {/* Bottom Row: Storage Class + Location + Actions */}
+        <div className="flex items-center justify-between gap-3">
+          <div className="flex items-center gap-3">
+            <span className={`inline-flex items-center text-[11px] font-semibold px-2.5 py-1 rounded-full border shadow-sm ${getStorageClassColor(bucket.storageClass)}`}>
+              {bucket.storageClass}
+            </span>
+            <div className="flex items-center gap-1.5 text-[12px] text-gray-600">
+              <MapPin className="w-3.5 h-3.5 text-gray-400 flex-shrink-0" />
+              <span className="truncate">{bucket.location}</span>
+            </div>
+          </div>
+
+          {/* Action Buttons */}
+          <div className="flex items-center gap-1">
+            <button
+              onClick={toggleLock}
+              className={`flex items-center justify-center w-8 h-8 ${
+                isLocked 
+                  ? 'text-amber-600 bg-amber-50 hover:bg-amber-100' 
+                  : 'text-gray-400 hover:text-green-600 hover:bg-green-50'
+              } rounded-lg transition-all`}
+              title={isLocked ? "Locked" : "Unlocked"}
+            >
+              {isLocked ? <Lock className="w-4 h-4" /> : <Unlock className="w-4 h-4" />}
+            </button>
+            <button
+              onClick={openSettings}
+              className="flex items-center justify-center w-8 h-8 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-all"
+              title="Settings"
+            >
+              <Settings className="w-4 h-4" />
+            </button>
+            <button
+              onClick={handleDelete}
+              className="flex items-center justify-center w-8 h-8 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-all"
+              title="Delete bucket"
+            >
+              <Trash2 className="w-4 h-4" />
+            </button>
           </div>
         </div>
-
-        {/* Delete Button - Bottom Right */}
-        <button
-          onClick={handleDelete}
-          className="absolute bottom-3 right-3 flex items-center justify-center w-8 h-8 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-all"
-          title="Delete bucket"
-        >
-          <Trash2 className="w-4 h-4" />
-        </button>
       </div>
     </Link>
   );
