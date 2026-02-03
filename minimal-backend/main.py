@@ -1,7 +1,7 @@
 """Main FastAPI application"""
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from api import compute, projects
+from api import compute, projects, vpc
 import os
 
 app = FastAPI(
@@ -28,6 +28,7 @@ def health():
 
 # Register routers with GCP API paths
 app.include_router(compute.router, prefix="/compute/v1", tags=["Compute Engine"])
+app.include_router(vpc.router, prefix="/compute/v1", tags=["VPC Networks"])
 app.include_router(projects.router, prefix="/cloudresourcemanager/v1", tags=["Projects"])
 
 if __name__ == "__main__":
