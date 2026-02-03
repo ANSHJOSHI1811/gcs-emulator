@@ -120,6 +120,21 @@ class Object(Base):
     meta = Column(JSON)
 
 
+class ServiceAccount(Base):
+    """IAM Service Account"""
+    __tablename__ = "service_accounts"
+    
+    id = Column(String, primary_key=True)  # email address
+    project_id = Column(String, nullable=False)
+    email = Column(String)  # duplicate of id for compatibility
+    display_name = Column(String)
+    description = Column(String)
+    unique_id = Column(String, nullable=False, unique=True)  # numeric ID
+    disabled = Column(Boolean, default=False)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
 # Don't create tables - they already exist in RDS
 # Base.metadata.create_all(engine)
 
