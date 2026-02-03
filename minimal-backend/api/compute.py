@@ -1,7 +1,7 @@
 """Compute Engine API - VM Instances"""
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
-from database import get_db, Instance, Zone, MachineType, Project
+from database import get_db, Instance, Zone, MachineType, Project, Network
 from docker_manager import create_container, stop_container, start_container, delete_container, get_container_status
 import uuid
 import random
@@ -134,17 +134,28 @@ async def create_instance(project: str, zone: str, body: dict, db: Session = Dep
         raise HTTPException(status_code=409, detail=f"Instance {name} already exists")
     
     # Extract network from request or use default
+    network_name = "default"
     network_url = "global/networks/default"
     if "networkInterfaces" in body and body["networkInterfaces"]:
         network = body["networkInterfaces"][0].get("network", "")
         if network:
-            network_url = network.split("/")[-1] if "/" in network else network
-            if not network_url.startswith("global/networks/"):
-                network_url = f"global/networks/{network_url}"
+            network_name = network.split("/")[-1] if "/" in network else network
+            network_url = f"global/networks/{network_name}"
     
-    # Create Docker container
-    print(f"Creating Docker container for {name}...")
-    container = create_container(name)
+    # Lookup Docker network name from database
+    network_record = db.query(Network).filter_by(
+        project_id=project,
+        name=network_name
+    ).first()
+    
+    if not network_record:
+        raise HTTPException(status_code=404, detail=f"Network {network_name} not found")
+    
+    docker_network_name = network_record.docker_network_name
+    print(f"Creating instance {name} on network {network_name} (Docker: {docker_network_name})")
+    
+    # Create Docker container with specified network
+    container = create_container(name, network=docker_network_name)
     
     # Create instance record (ID will be auto-generated as integer)
     instance = Instance(
@@ -163,7 +174,7 @@ async def create_instance(project: str, zone: str, body: dict, db: Session = Dep
     db.commit()
     db.refresh(instance)  # Get the auto-generated ID
     
-    print(f"✅ Created instance {name} (ID: {instance.id}) with container {container['container_id'][:12]}")
+    print(f"✅ Created instance {name} (ID: {instance.id}) with container {container['container_id'][:12]} on network {docker_network_name}")
     
     import random
     operation_id = str(random.randint(1000000000000, 9999999999999))

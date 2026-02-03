@@ -69,14 +69,11 @@ class Network(Base):
     """VPC Network = Docker Network"""
     __tablename__ = "networks"
     
-    id = Column(String, primary_key=True)
+    id = Column(Integer, primary_key=True, autoincrement=True)
     name = Column(String, nullable=False)
     project_id = Column(String, nullable=False)
-    description = Column(String)
-    auto_create_subnetworks = Column(Boolean, default=True)
-    routing_mode = Column(String, default="REGIONAL")
-    docker_network_id = Column(String)  # Docker network ID
     docker_network_name = Column(String)  # Docker network name
+    auto_create_subnetworks = Column(Boolean, default=True)
     creation_timestamp = Column(DateTime, default=datetime.utcnow)
 
 # Don't create tables - they already exist in RDS
