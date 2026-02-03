@@ -1,11 +1,11 @@
 import axios, { AxiosError } from 'axios';
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://127.0.0.1:8080';
-export const PROJECT_ID = import.meta.env.VITE_PROJECT_ID || 'test-project';
+export const PROJECT_ID = import.meta.env.VITE_PROJECT_ID || 'taskmanager-app-001';
 
 // Function to get current project from localStorage
 export const getCurrentProject = () => {
-  return localStorage.getItem('gcp-stimulator-project') || 'demo-project';
+  return localStorage.getItem('gcp-stimulator-project') || 'taskmanager-app-001';
 };
 
 export const apiClient = axios.create({

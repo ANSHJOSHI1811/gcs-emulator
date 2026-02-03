@@ -22,7 +22,7 @@ const ProjectContext = createContext<ProjectContextType | undefined>(undefined);
 
 export function ProjectProvider({ children }: { children: ReactNode }) {
   const [currentProject, setCurrentProjectState] = useState<string>(() => {
-    return localStorage.getItem('gcp-stimulator-project') || 'demo-project';
+    return localStorage.getItem('gcp-stimulator-project') || 'taskmanager-app-001';
   });
   const [projects, setProjects] = useState<Project[]>([]);
   const [isLoading, setIsLoading] = useState(true);
