@@ -26,31 +26,15 @@ const VPCDashboardPage = () => {
 
   const loadStats = async () => {
     try {
-      const [networksRes, subnetsRes, firewallsRes, routesRes] = await Promise.all([
-        apiClient.get(`/compute/v1/projects/${currentProject}/global/networks`).catch(() => ({ data: { items: [] } })),
-        apiClient.get(`/compute/v1/projects/${currentProject}/aggregated/subnetworks`).catch(() => ({ data: { items: {} } })),
-        apiClient.get(`/compute/v1/projects/${currentProject}/global/firewalls`).catch(() => ({ data: { items: [] } })),
-        apiClient.get(`/compute/v1/projects/${currentProject}/global/routes`).catch(() => ({ data: { items: [] } })),
-      ]);
+      const networksRes = await apiClient.get(`/compute/v1/projects/${currentProject}/global/networks`).catch(() => ({ data: { items: [] } }));
 
       const networks = networksRes.data.items || [];
-      const subnetsAgg = subnetsRes.data.items || {};
-      const firewalls = firewallsRes.data.items || [];
-      const routes = routesRes.data.items || [];
-
-      // Count subnets from aggregated response
-      let subnetCount = 0;
-      Object.values(subnetsAgg).forEach((regionData: any) => {
-        if (regionData.subnetworks) {
-          subnetCount += regionData.subnetworks.length;
-        }
-      });
 
       setStats({
         networks: networks.length,
-        subnets: subnetCount,
-        firewalls: firewalls.length,
-        routes: routes.length,
+        subnets: 0, // Subnets not implemented yet
+        firewalls: 0, // Firewalls not implemented yet
+        routes: 0, // Routes not implemented yet
       });
     } catch (error) {
       console.error('Failed to load VPC stats:', error);

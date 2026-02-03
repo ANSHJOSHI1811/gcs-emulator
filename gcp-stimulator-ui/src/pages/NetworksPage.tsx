@@ -3,16 +3,15 @@ import { useProject } from '../contexts/ProjectContext';
 import { Globe, Plus, Trash2, RefreshCw, AlertCircle } from 'lucide-react';
 import { apiClient } from '../api/client';
 import { Modal, ModalFooter, ModalButton } from '../components/Modal';
-import { FormField, Input, Textarea, RadioGroup, Select } from '../components/FormFields';
+import { FormField, Input, RadioGroup } from '../components/FormFields';
 
 interface Network {
-  id: string;
+  id: number;
   name: string;
-  description?: string;
   autoCreateSubnetworks: boolean;
-  routingMode?: string;
   creationTimestamp?: string;
   selfLink?: string;
+  dockerNetworkName?: string;
 }
 
 const NetworksPage = () => {
@@ -24,14 +23,19 @@ const NetworksPage = () => {
   const [deleteLoading, setDeleteLoading] = useState<string | null>(null);
   const [formData, setFormData] = useState({
     name: '',
-    description: '',
-    autoCreateSubnetworks: false,
-    routingMode: 'REGIONAL',
+    autoCreateSubnetworks: true,
   });
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     loadNetworks();
+    
+    // Auto-refresh every 3 seconds to match compute page
+    const interval = setInterval(() => {
+      loadNetworks();
+    }, 3000);
+    
+    return () => clearInterval(interval);
   }, [currentProject]);
 
   const loadNetworks = async () => {
@@ -56,24 +60,18 @@ const NetworksPage = () => {
     try {
       await apiClient.post(`/compute/v1/projects/${currentProject}/global/networks`, {
         name: formData.name,
-        description: formData.description,
         autoCreateSubnetworks: formData.autoCreateSubnetworks,
-        routingConfig: {
-          routingMode: formData.routingMode,
-        },
       });
 
       setShowCreateModal(false);
       setFormData({
         name: '',
-        description: '',
-        autoCreateSubnetworks: false,
-        routingMode: 'REGIONAL',
+        autoCreateSubnetworks: true,
       });
       await loadNetworks();
     } catch (error: any) {
       console.error('Failed to create network:', error);
-      setError(error.response?.data?.error?.message || 'Failed to create network');
+      setError(error.response?.data?.detail || 'Failed to create network');
     } finally {
       setCreateLoading(false);
     }
@@ -92,7 +90,7 @@ const NetworksPage = () => {
       await loadNetworks();
     } catch (error: any) {
       console.error('Failed to delete network:', error);
-      setError(error.response?.data?.error?.message || 'Failed to delete network');
+      setError(error.response?.data?.detail || 'Failed to delete network');
     } finally {
       setDeleteLoading(null);
     }
@@ -174,13 +172,13 @@ const NetworksPage = () => {
                     Name
                   </th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Description
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                     Subnet Mode
                   </th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Routing Mode
+                    Docker Network
+                  </th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Created
                   </th>
                   <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
                     Actions
@@ -195,12 +193,9 @@ const NetworksPage = () => {
                         <Globe className="w-5 h-5 text-blue-600 mr-3" />
                         <div>
                           <div className="text-sm font-medium text-gray-900">{network.name}</div>
-                          <div className="text-xs text-gray-500">{network.id}</div>
+                          <div className="text-xs text-gray-500">ID: {network.id}</div>
                         </div>
                       </div>
-                    </td>
-                    <td className="px-6 py-4">
-                      <div className="text-sm text-gray-900">{network.description || '-'}</div>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
                       <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
@@ -212,13 +207,21 @@ const NetworksPage = () => {
                       </span>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
-                      <div className="text-sm text-gray-900">{network.routingMode || 'REGIONAL'}</div>
+                      <div className="text-sm text-gray-600 font-mono">{network.dockerNetworkName || '-'}</div>
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap">
+                      <div className="text-sm text-gray-500">
+                        {network.creationTimestamp 
+                          ? new Date(network.creationTimestamp).toLocaleDateString()
+                          : '-'}
+                      </div>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
                       <button
                         onClick={() => handleDelete(network.name)}
-                        disabled={deleteLoading === network.name}
-                        className="text-red-600 hover:text-red-900 disabled:opacity-50"
+                        disabled={deleteLoading === network.name || network.name === 'default'}
+                        className="text-red-600 hover:text-red-900 disabled:opacity-50 disabled:cursor-not-allowed"
+                        title={network.name === 'default' ? 'Cannot delete default network' : 'Delete network'}
                       >
                         <Trash2 className="w-4 h-4" />
                       </button>
@@ -255,25 +258,16 @@ const NetworksPage = () => {
             />
           </FormField>
 
-          <FormField label="Description">
-            <Textarea
-              value={formData.description}
-              onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-              rows={3}
-              placeholder="Optional description for this network"
-            />
-          </FormField>
-
           <FormField label="Subnet Creation Mode">
             <RadioGroup
               name="subnetMode"
-              value={formData.autoCreateSubnetworks}
-              onChange={(value) => setFormData({ ...formData, autoCreateSubnetworks: value })}
+              value={formData.autoCreateSubnetworks.toString()}
+              onChange={(value) => setFormData({ ...formData, autoCreateSubnetworks: value === 'true' })}
               options={[
                 {
                   value: 'true',
                   label: 'Automatic',
-                  description: 'One subnet per region is automatically created'
+                  description: 'Subnets are created automatically'
                 },
                 {
                   value: 'false',
@@ -282,19 +276,6 @@ const NetworksPage = () => {
                 }
               ]}
             />
-          </FormField>
-
-          <FormField
-            label="Dynamic Routing Mode"
-            help="Regional: Routes learned by Cloud Router only apply to the region where the router is located"
-          >
-            <Select
-              value={formData.routingMode}
-              onChange={(e) => setFormData({ ...formData, routingMode: e.target.value })}
-            >
-              <option value="REGIONAL">Regional</option>
-              <option value="GLOBAL">Global</option>
-            </Select>
           </FormField>
 
           <ModalFooter>
