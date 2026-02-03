@@ -15,7 +15,7 @@ class Instance(Base):
     """VM Instance = Docker Container"""
     __tablename__ = "instances"
     
-    id = Column(String, primary_key=True)
+    id = Column(Integer, primary_key=True, autoincrement=True)
     name = Column(String, nullable=False)
     project_id = Column(String, nullable=False)
     zone = Column(String, nullable=False)

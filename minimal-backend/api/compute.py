@@ -4,8 +4,22 @@ from sqlalchemy.orm import Session
 from database import get_db, Instance, Zone, MachineType, Project
 from docker_manager import create_container, stop_container, start_container, delete_container, get_container_status
 import uuid
+import random
 
 router = APIRouter()
+
+@router.post("/projects/{project}/zones/{zone}/operations/{operation}/wait")
+def wait_operation(project: str, zone: str, operation: str):
+    """Operation wait endpoint - all operations complete immediately"""
+    return {
+        "kind": "compute#operation",
+        "id": operation,
+        "name": operation,
+        "zone": f"https://www.googleapis.com/compute/v1/projects/{project}/zones/{zone}",
+        "status": "DONE",
+        "progress": 100,
+        "selfLink": f"https://www.googleapis.com/compute/v1/projects/{project}/zones/{zone}/operations/{operation}"
+    }
 
 @router.get("/projects/{project}/zones")
 def list_zones(project: str, db: Session = Depends(get_db)):
@@ -50,6 +64,9 @@ def list_instances(project: str, zone: str, db: Session = Depends(get_db)):
             elif docker_status == "exited":
                 i.status = "TERMINATED"
     
+    # Commit status changes to database
+    db.commit()
+    
     return {
         "kind": "compute#instanceList",
         "items": [{
@@ -89,17 +106,20 @@ def get_instance(project: str, zone: str, instance_name: str, db: Session = Depe
         db.commit()
     
     return {
+        "kind": "compute#instance",
         "name": instance.name,
-        "id": instance.id,
+        "id": str(instance.id),
         "status": instance.status,
         "machineType": f"zones/{instance.zone}/machineTypes/{instance.machine_type}",
         "zone": f"zones/{instance.zone}",
         "networkInterfaces": [{
+            "network": f"https://www.googleapis.com/compute/v1/projects/{project}/{instance.network_url}",
             "networkIP": instance.internal_ip,
-            "network": instance.network_url
+            "name": "nic0"
         }] if instance.internal_ip else [],
         "dockerContainerId": instance.container_id,
-        "dockerContainerName": instance.container_name
+        "dockerContainerName": instance.container_name,
+        "selfLink": f"https://www.googleapis.com/compute/v1/projects/{project}/zones/{instance.zone}/instances/{instance.name}"
     }
 
 @router.post("/projects/{project}/zones/{zone}/instances")
@@ -113,13 +133,21 @@ async def create_instance(project: str, zone: str, body: dict, db: Session = Dep
     if existing:
         raise HTTPException(status_code=409, detail=f"Instance {name} already exists")
     
+    # Extract network from request or use default
+    network_url = "global/networks/default"
+    if "networkInterfaces" in body and body["networkInterfaces"]:
+        network = body["networkInterfaces"][0].get("network", "")
+        if network:
+            network_url = network.split("/")[-1] if "/" in network else network
+            if not network_url.startswith("global/networks/"):
+                network_url = f"global/networks/{network_url}"
+    
     # Create Docker container
     print(f"Creating Docker container for {name}...")
     container = create_container(name)
     
-    # Create instance record
+    # Create instance record (ID will be auto-generated as integer)
     instance = Instance(
-        id=str(uuid.uuid4()),
         name=name,
         project_id=project,
         zone=zone,
@@ -127,19 +155,33 @@ async def create_instance(project: str, zone: str, body: dict, db: Session = Dep
         status="RUNNING",
         internal_ip=container["internal_ip"],
         container_id=container["container_id"],
-        container_name=container["container_name"]
+        container_name=container["container_name"],
+        network_url=network_url
     )
     
     db.add(instance)
     db.commit()
+    db.refresh(instance)  # Get the auto-generated ID
     
-    print(f"✅ Created instance {name} with container {container['container_id'][:12]}")
+    print(f"✅ Created instance {name} (ID: {instance.id}) with container {container['container_id'][:12]}")
     
+    import random
+    operation_id = str(random.randint(1000000000000, 9999999999999))
     return {
         "kind": "compute#operation",
+        "id": operation_id,
+        "name": operation_id,
+        "zone": f"https://www.googleapis.com/compute/v1/projects/{project}/zones/{zone}",
+        "operationType": "insert",
+        "targetLink": f"https://www.googleapis.com/compute/v1/projects/{project}/zones/{zone}/instances/{name}",
+        "targetId": str(instance.id),
         "status": "DONE",
-        "targetLink": f"projects/{project}/zones/{zone}/instances/{name}",
-        "operationType": "insert"
+        "user": "user@example.com",
+        "progress": 100,
+        "insertTime": instance.created_at.isoformat() + "Z",
+        "startTime": instance.created_at.isoformat() + "Z",
+        "endTime": instance.created_at.isoformat() + "Z",
+        "selfLink": f"https://www.googleapis.com/compute/v1/projects/{project}/zones/{zone}/operations/{operation_id}"
     }
 
 @router.post("/projects/{project}/zones/{zone}/instances/{instance_name}/stop")
@@ -162,10 +204,19 @@ async def stop_instance(project: str, zone: str, instance_name: str, db: Session
     
     print(f"✅ Stopped instance {instance_name}")
     
+    import random
+    operation_id = str(random.randint(1000000000000, 9999999999999))
     return {
         "kind": "compute#operation",
+        "id": operation_id,
+        "name": operation_id,
+        "zone": f"https://www.googleapis.com/compute/v1/projects/{project}/zones/{zone}",
+        "operationType": "stop",
+        "targetLink": f"https://www.googleapis.com/compute/v1/projects/{project}/zones/{zone}/instances/{instance_name}",
         "status": "DONE",
-        "operationType": "stop"
+        "user": "user@example.com",
+        "progress": 100,
+        "selfLink": f"https://www.googleapis.com/compute/v1/projects/{project}/zones/{zone}/operations/{operation_id}"
     }
 
 @router.post("/projects/{project}/zones/{zone}/instances/{instance_name}/start")
@@ -188,10 +239,19 @@ async def start_instance(project: str, zone: str, instance_name: str, db: Sessio
     
     print(f"✅ Started instance {instance_name}")
     
+    import random
+    operation_id = str(random.randint(1000000000000, 9999999999999))
     return {
         "kind": "compute#operation",
+        "id": operation_id,
+        "name": operation_id,
+        "zone": f"https://www.googleapis.com/compute/v1/projects/{project}/zones/{zone}",
+        "operationType": "start",
+        "targetLink": f"https://www.googleapis.com/compute/v1/projects/{project}/zones/{zone}/instances/{instance_name}",
         "status": "DONE",
-        "operationType": "start"
+        "user": "user@example.com",
+        "progress": 100,
+        "selfLink": f"https://www.googleapis.com/compute/v1/projects/{project}/zones/{zone}/operations/{operation_id}"
     }
 
 @router.delete("/projects/{project}/zones/{zone}/instances/{instance_name}")
@@ -215,8 +275,17 @@ async def delete_instance(project: str, zone: str, instance_name: str, db: Sessi
     
     print(f"✅ Deleted instance {instance_name}")
     
+    import random
+    operation_id = str(random.randint(1000000000000, 9999999999999))
     return {
         "kind": "compute#operation",
+        "id": operation_id,
+        "name": operation_id,
+        "zone": f"https://www.googleapis.com/compute/v1/projects/{project}/zones/{zone}",
+        "operationType": "delete",
+        "targetLink": f"https://www.googleapis.com/compute/v1/projects/{project}/zones/{zone}/instances/{instance_name}",
         "status": "DONE",
-        "operationType": "delete"
+        "user": "user@example.com",
+        "progress": 100,
+        "selfLink": f"https://www.googleapis.com/compute/v1/projects/{project}/zones/{zone}/operations/{operation_id}"
     }

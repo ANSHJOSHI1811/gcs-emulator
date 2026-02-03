@@ -33,10 +33,8 @@ interface Instance {
       natIP: string;
     }>;
   }>;
-  _emulator?: {
-    containerId: string;
-    containerName: string;
-  };
+  dockerContainerId?: string;
+  dockerContainerName?: string;
 }
 
 const ComputeDashboardPage = () => {
@@ -73,6 +71,13 @@ const ComputeDashboardPage = () => {
 
   useEffect(() => {
     loadData();
+    
+    // Auto-refresh every 3 seconds to update instance status
+    const interval = setInterval(() => {
+      loadData();
+    }, 3000);
+    
+    return () => clearInterval(interval);
   }, [currentProject]);
 
   const loadData = async () => {
@@ -353,9 +358,9 @@ const ComputeDashboardPage = () => {
                       {getExternalIp(instance)}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600 font-mono">
-                      {instance._emulator?.containerId ? (
-                        <span className="text-xs bg-gray-100 px-2 py-1 rounded" title={instance._emulator.containerId}>
-                          {instance._emulator.containerId.substring(0, 12)}
+                      {instance.dockerContainerId ? (
+                        <span className="text-xs bg-gray-100 px-2 py-1 rounded" title={instance.dockerContainerId}>
+                          {instance.dockerContainerId.substring(0, 12)}
                         </span>
                       ) : (
                         '-'
