@@ -75,7 +75,8 @@ def list_zones(project: str, db: Session = Depends(get_db)):
             "name": z.name,
             "region": z.region,
             "status": z.status,
-            "description": z.description or ""
+            "description": z.description or "",
+            "selfLink": f"https://www.googleapis.com/compute/v1/projects/{project}/zones/{z.name}"
         } for z in zones]
     }
 

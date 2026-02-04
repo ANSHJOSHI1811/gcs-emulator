@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Cpu, Server, MapPin, Settings, Plus, StopCircle, Play, Trash2, HardDrive, Network } from 'lucide-react';
+import { Cpu, Server, Plus, StopCircle, Play, Trash2, Network } from 'lucide-react';
 import { apiClient } from '../api/client';
 import { Modal, ModalFooter, ModalButton } from '../components/Modal';
 import { FormField, Input, Select } from '../components/FormFields';
