@@ -53,8 +53,8 @@ docker ps | grep gcp-vm-test-vm
 **Status**: FULLY OPERATIONAL
 
 **Default Behavior**:
-- All instances by default connect to `gcp-default` Docker network
-- Network automatically created on backend startup
+- All instances by default connect to the project default VPC
+- The project default VPC maps to Docker's built-in `bridge` network
 
 **Custom VPC Networks**:
 ```bash
@@ -68,7 +68,7 @@ docker network ls | grep gcp-vpc-test-project-custom-vpc
 
 **Network Mapping**:
 ```
-VPC: default → Docker Network: gcp-default
+VPC: default → Docker Network: bridge
 VPC: custom-vpc → Docker Network: gcp-vpc-test-project-custom-vpc
 ```
 
@@ -118,6 +118,21 @@ curl -X POST http://localhost:8080/compute/v1/projects/test-project/zones/us-cen
 | Create VPC Network | ✅ | POST /compute/v1/projects/{project}/global/networks | gcloud compute networks create |
 | Delete VPC Network | ✅ | DELETE .../global/networks/{name} | gcloud compute networks delete |
 | List Zones | ✅ | GET /compute/v1/projects/{project}/zones | gcloud compute zones list |
+
+---
+
+## 🌐 Network & Internet Gateway Model
+
+- Every VPC network corresponds to a Docker bridge network.
+- The default VPC for each project maps to the Docker `bridge` network.
+- Outbound internet access for instances is provided by Docker's NAT on the host.
+- The backend exposes a demo-only Internet Gateway resource:
+  - `GET /compute/v1/projects/{project}/global/internetGateways`
+  - `GET /compute/v1/projects/{project}/global/internetGateways/default-internet-gateway`
+- This Internet Gateway is **control-plane only**:
+  - Used for visibility and gcloud-style workflows.
+  - No routing tables, firewall enforcement, or custom NAT logic are implemented.
+- Instance networkInterfaces include `accessConfigs` with a static `ONE_TO_ONE_NAT` entry to show an external IP; inbound traffic to instances is **not** supported yet.
 | List Machine Types | ✅ | GET .../zones/{zone}/machineTypes | gcloud compute machine-types list |
 | List Projects | ✅ | GET /cloudresourcemanager/v1/projects | gcloud projects list |
 

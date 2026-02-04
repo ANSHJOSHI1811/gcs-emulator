@@ -8,6 +8,50 @@ import random
 
 router = APIRouter()
 
+
+def _internet_gateway_resource(project: str) -> dict:
+    """Return static control-plane internet gateway representation.
+
+    This is a demo-only resource used for visibility. Data-plane NAT
+    is still provided by Docker bridge on the host.
+    """
+    self_link = (
+        f"https://www.googleapis.com/compute/v1/projects/"
+        f"{project}/global/internetGateways/default-internet-gateway"
+    )
+    return {
+        "kind": "compute#internetGateway",
+        "id": "default-internet-gateway",
+        "name": "default-internet-gateway",
+        "network": (
+            f"https://www.googleapis.com/compute/v1/projects/"
+            f"{project}/global/networks/default"
+        ),
+        "status": "ACTIVE",
+        "backing": "docker-bridge-nat",
+        "selfLink": self_link,
+    }
+
+
+@router.get("/projects/{project}/global/internetGateways")
+def list_internet_gateways(project: str):
+    """List demo internet gateways (control-plane only).
+
+    Always returns a single default-internet-gateway backed by Docker NAT.
+    """
+    return {
+        "kind": "compute#internetGatewayList",
+        "items": [
+            _internet_gateway_resource(project)
+        ],
+    }
+
+
+@router.get("/projects/{project}/global/internetGateways/default-internet-gateway")
+def get_internet_gateway(project: str):
+    """Get the default demo internet gateway (control-plane only)."""
+    return _internet_gateway_resource(project)
+
 @router.post("/projects/{project}/zones/{zone}/operations/{operation}/wait")
 def wait_operation(project: str, zone: str, operation: str):
     """Operation wait endpoint - all operations complete immediately"""
@@ -77,11 +121,17 @@ def list_instances(project: str, zone: str, db: Session = Depends(get_db)):
             "zone": f"zones/{i.zone}",
             "networkInterfaces": [{
                 "networkIP": i.internal_ip,
-                "network": i.network_url
+                "network": i.network_url,
+                "accessConfigs": [
+                    {
+                        "type": "ONE_TO_ONE_NAT",
+                        "natIP": "127.0.0.1",
+                    }
+                ],
             }] if i.internal_ip else [],
             "dockerContainerId": i.container_id,  # Show in UI
-            "dockerContainerName": i.container_name
-        } for i in instances]
+            "dockerContainerName": i.container_name,
+        } for i in instances],
     }
 
 @router.get("/projects/{project}/zones/{zone}/instances/{instance_name}")
@@ -115,7 +165,13 @@ def get_instance(project: str, zone: str, instance_name: str, db: Session = Depe
         "networkInterfaces": [{
             "network": f"https://www.googleapis.com/compute/v1/projects/{project}/{instance.network_url}",
             "networkIP": instance.internal_ip,
-            "name": "nic0"
+            "name": "nic0",
+            "accessConfigs": [
+                {
+                    "type": "ONE_TO_ONE_NAT",
+                    "natIP": "127.0.0.1",
+                }
+            ],
         }] if instance.internal_ip else [],
         "dockerContainerId": instance.container_id,
         "dockerContainerName": instance.container_name,
