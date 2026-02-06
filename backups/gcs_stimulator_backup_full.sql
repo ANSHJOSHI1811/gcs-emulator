@@ -1,0 +1,2 @@
+pg_dump: error: connection to server at "database-1.cxeqkmcg8wj2.eu-north-1.rds.amazonaws.com" (172.31.48.74), port 5432 failed: FATAL:  password authentication failed for user "postgres"
+connection to server at "database-1.cxeqkmcg8wj2.eu-north-1.rds.amazonaws.com" (172.31.48.74), port 5432 failed: FATAL:  no pg_hba.conf entry for host "172.31.8.44", user "postgres", database "gcs_stimulator", no encryption

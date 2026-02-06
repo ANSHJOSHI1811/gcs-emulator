@@ -27,6 +27,7 @@ class Instance(Base):
     external_ip = Column(String)
     network_url = Column(String, default="global/networks/default")
     subnetwork_url = Column(String)
+    subnet = Column(String, default="default")  # Subnet name for IP allocation
     source_image = Column(String, default="debian-11")
     disk_size_gb = Column(Integer, default=10)
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
@@ -74,7 +75,22 @@ class Network(Base):
     project_id = Column(String, nullable=False)
     docker_network_name = Column(String)  # Docker network name
     auto_create_subnetworks = Column(Boolean, default=True)
+    cidr_range = Column(String, default="10.128.0.0/16")  # VPC CIDR range
     creation_timestamp = Column(DateTime, default=datetime.utcnow)
+
+
+class Subnet(Base):
+    """Subnet within VPC Network"""
+    __tablename__ = "subnets"
+    
+    id = Column(String, primary_key=True)
+    name = Column(String, nullable=False)
+    network = Column(String, nullable=False)  # Network name
+    region = Column(String, nullable=False)
+    ip_cidr_range = Column(String, nullable=False)  # e.g., "10.0.1.0/24"
+    gateway_ip = Column(String)
+    next_available_ip = Column(Integer, default=2)  # Start at .2 (skip .0, .1)
+    created_at = Column(DateTime, default=datetime.utcnow)
 
 
 class Bucket(Base):

@@ -5,16 +5,35 @@ from typing import Optional
 client = docker.from_env()
 
 def create_default_network():
-    """Create default GCP Docker network"""
+    """Create default GCP Docker network with IPAM configuration"""
     try:
         return client.networks.get("gcp-default")
     except docker.errors.NotFound:
-        print("Creating gcp-default Docker network...")
-        return client.networks.create("gcp-default", driver="bridge")
+        print("Creating gcp-default Docker network with IPAM...")
+        
+        # Create IPAM configuration for default network
+        ipam_pool = docker.types.IPAMPool(
+            subnet='10.128.0.0/20',
+            gateway='10.128.0.1'
+        )
+        ipam_config = docker.types.IPAMConfig(pool_configs=[ipam_pool])
+        
+        return client.networks.create(
+            "gcp-default", 
+            driver="bridge",
+            ipam=ipam_config
+        )
 
-def create_container(name: str, network: str = "gcp-default", image: str = "ubuntu:22.04"):
+def create_container(name: str, network: str = "gcp-default", image: str = "ubuntu:22.04", ip_address: Optional[str] = None):
     """
-    Create Docker container for VM instance
+    Create Docker container for VM instance with optional static IP assignment
+    
+    Args:
+        name: VM instance name
+        network: Docker network name
+        image: Container image
+        ip_address: Optional static IP to assign (e.g., "10.128.0.2")
+    
     Returns: {"container_id": str, "container_name": str, "internal_ip": str}
     """
     container_name = f"gcp-vm-{name}"
@@ -25,24 +44,43 @@ def create_container(name: str, network: str = "gcp-default", image: str = "ubun
     except:
         net = create_default_network()
     
-    # Create container
-    container = client.containers.run(
-        image,
-        name=container_name,
-        command="sleep infinity",
-        detach=True,
-        network=network,
-        hostname=name
-    )
-    
-    # Get IP address
-    container.reload()
-    ip = container.attrs['NetworkSettings']['Networks'][network]['IPAddress']
+    # Create container WITHOUT attaching to network yet (if we need specific IP)
+    if ip_address:
+        container = client.containers.run(
+            image,
+            name=container_name,
+            command="sleep infinity",
+            detach=True,
+            network=None,  # Don't attach yet
+            hostname=name
+        )
+        
+        # Connect to network with specific IP
+        net.connect(container, ipv4_address=ip_address)
+        print(f"✓ Assigned IP {ip_address} to container {container_name}")
+        
+        container.reload()
+        final_ip = ip_address
+    else:
+        # Create with auto-assigned IP
+        container = client.containers.run(
+            image,
+            name=container_name,
+            command="sleep infinity",
+            detach=True,
+            network=network,
+            hostname=name
+        )
+        
+        # Get auto-assigned IP
+        container.reload()
+        final_ip = container.attrs['NetworkSettings']['Networks'][network]['IPAddress']
+        print(f"✓ Auto-assigned IP {final_ip} to container {container_name}")
     
     return {
         "container_id": container.id,
         "container_name": container_name,
-        "internal_ip": ip
+        "internal_ip": final_ip
     }
 
 def stop_container(container_id: str):
