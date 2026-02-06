@@ -1,8 +1,56 @@
 """Docker Manager - Container operations"""
 import docker
+import ipaddress
 from typing import Optional
 
 client = docker.from_env()
+
+def create_docker_network_with_cidr(name: str, cidr: str, project: str) -> str:
+    """Create Docker network with custom CIDR range
+    
+    Args:
+        name: Network name
+        cidr: CIDR range (e.g., '10.99.0.0/16')
+        project: GCP project ID
+        
+    Returns:
+        Docker network ID
+    """
+    docker_network_name = f"gcp-vpc-{project}-{name}"
+    
+    try:
+        # Check if already exists
+        existing = client.networks.get(docker_network_name)
+        print(f"✓ Network {docker_network_name} already exists")
+        return existing.id
+    except docker.errors.NotFound:
+        pass
+    
+    # Parse CIDR to get gateway
+    network_obj = ipaddress.ip_network(cidr, strict=False)
+    gateway = str(list(network_obj.hosts())[0])
+    
+    # Create IPAM configuration
+    ipam_pool = docker.types.IPAMPool(
+        subnet=cidr,
+        gateway=gateway
+    )
+    ipam_config = docker.types.IPAMConfig(pool_configs=[ipam_pool])
+    
+    # Create network
+    network = client.networks.create(
+        docker_network_name,
+        driver="bridge",
+        ipam=ipam_config,
+        labels={
+            "gcp-project": project,
+            "gcp-network": name,
+            "gcp-cidr": cidr
+        }
+    )
+    
+    print(f"✓ Created Docker network {docker_network_name} with CIDR {cidr}, gateway {gateway}")
+    return network.id
 
 def create_default_network():
     """Create default GCP Docker network with IPAM configuration"""
