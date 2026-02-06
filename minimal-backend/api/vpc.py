@@ -74,16 +74,23 @@ def get_network(project: str, network_name: str, db: Session = Depends(get_db)):
 def create_network(project: str, body: dict, db: Session = Depends(get_db)):
     """
     Create VPC network with custom CIDR (creates Docker network with IPAM)
+    Auto-mode uses 10.128.0.0/9 and auto-creates subnets per region
     Example: {"name": "my-vpc", "IPv4Range": "10.99.0.0/16", "autoCreateSubnetworks": false}
     """
     import sys
     sys.path.insert(0, '/home/ubuntu/gcs-stimulator/minimal-backend')
     from docker_manager import create_docker_network_with_cidr
-    from ip_manager import validate_cidr
+    from ip_manager import validate_cidr, get_gateway_ip
+    from region_subnets import get_auto_mode_subnets, is_auto_mode_cidr
     
     name = body["name"]
-    cidr = body.get("IPv4Range", "10.128.0.0/16")  # Accept custom CIDR
     auto_create = body.get("autoCreateSubnetworks", True)
+    
+    # Auto-mode uses 10.128.0.0/9, custom mode uses provided CIDR
+    if auto_create:
+        cidr = "10.128.0.0/9"  # Fixed CIDR for auto-mode
+    else:
+        cidr = body.get("IPv4Range", "10.128.0.0/16")
     
     # Validate CIDR
     if not validate_cidr(cidr):
@@ -95,11 +102,17 @@ def create_network(project: str, body: dict, db: Session = Depends(get_db)):
         raise HTTPException(status_code=409, detail=f"Network {name} already exists")
     
     # Create Docker network with custom CIDR
+    # For auto-mode, use a unique Docker network CIDR
+    if auto_create:
+        docker_cidr = f"172.{16 + hash(project + name) % 16}.0.0/16"  # Unique per VPC
+    else:
+        docker_cidr = cidr
+    
     docker_network_name = f"gcp-vpc-{project}-{name}"
-    print(f"Creating Docker network: {docker_network_name} with CIDR {cidr}")
+    print(f"Creating Docker network: {docker_network_name} with CIDR {docker_cidr}")
     
     try:
-        docker_network_id = create_docker_network_with_cidr(name, cidr, project)
+        docker_network_id = create_docker_network_with_cidr(name, docker_cidr, project)
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to create Docker network: {e}")
     
@@ -117,6 +130,30 @@ def create_network(project: str, body: dict, db: Session = Depends(get_db)):
     db.refresh(network)
     
     print(f"✅ Created VPC network {name} (ID: {network.id}) with Docker network {docker_network_name}")
+    
+    # Auto-create subnets if auto-mode is enabled
+    if auto_create and is_auto_mode_cidr(cidr):
+        print(f"Auto-mode enabled, creating subnets for all regions...")
+        regions_data = get_auto_mode_subnets()
+        
+        for region_info in regions_data:
+            region_name = region_info["name"]
+            subnet_cidr = region_info["cidr"]
+            subnet_name = f"{name}-{region_name}"
+            
+            # Create subnet record
+            subnet = Subnet(
+                name=subnet_name,
+                network=f"projects/{project}/global/networks/{name}",
+                region=region_name,
+                ip_cidr_range=subnet_cidr,
+                gateway_ip=get_gateway_ip(subnet_cidr),
+                next_available_ip=2  # Start from .2 (.0=network, .1=gateway)
+            )
+            db.add(subnet)
+        
+        db.commit()
+        print(f"✅ Auto-created {len(regions_data)} subnets for {name}")
     
     operation_id = str(random.randint(1000000000000, 9999999999999))
     return {
@@ -227,9 +264,9 @@ def create_subnet(project: str, region: str, body: dict, db: Session = Depends(g
     
     # Check for overlapping subnets
     existing_subnets = db.query(Subnet).filter_by(network=network_name).all()
+    import ipaddress
     for existing in existing_subnets:
         # Check if ranges overlap
-        import ipaddress
         try:
             new_net = ipaddress.ip_network(cidr, strict=False)
             exist_net = ipaddress.ip_network(existing.ip_cidr_range, strict=False)
@@ -238,15 +275,19 @@ def create_subnet(project: str, region: str, body: dict, db: Session = Depends(g
                     status_code=400,
                     detail=f"Subnet {cidr} overlaps with existing subnet {existing.name} ({existing.ip_cidr_range})"
                 )
-        except:
+        except HTTPException:
+            # Re-raise HTTPException (don't swallow validation errors!)
+            raise
+        except Exception as e:
+            # Log but continue if there's a parsing error
+            print(f"Warning: Could not validate overlap for {existing.name}: {e}")
             pass
     
     # Calculate gateway IP
     gateway = get_gateway_ip(cidr)
     
-    # Create subnet
+    # Create subnet (ID will be auto-generated as integer)
     subnet = Subnet(
-        id=str(uuid.uuid4()),
         name=name,
         network=network_name,
         region=region,
@@ -270,6 +311,41 @@ def create_subnet(project: str, region: str, body: dict, db: Session = Depends(g
         "status": "DONE",
         "progress": 100,
         "selfLink": f"https://www.googleapis.com/compute/v1/projects/{project}/regions/{region}/operations/{operation_id}"
+    }
+
+@router.get("/projects/{project}/aggregated/subnetworks")
+def list_subnets_aggregated(project: str, db: Session = Depends(get_db)):
+    """List all subnets across all regions (aggregated)"""
+    # Get all networks for this project
+    project_networks = db.query(Network).filter(Network.project_id == project).all()
+    network_names = [net.name for net in project_networks]
+    
+    # Get all subnets for those networks
+    subnets = db.query(Subnet).filter(Subnet.network.in_(network_names)).all()
+    
+    # Group by region
+    items = {}
+    for s in subnets:
+        region_key = f"regions/{s.region}"
+        if region_key not in items:
+            items[region_key] = {
+                "subnetworks": []
+            }
+        items[region_key]["subnetworks"].append({
+            "kind": "compute#subnetwork",
+            "name": s.name,
+            "id": s.id,
+            "network": s.network,
+            "ipCidrRange": s.ip_cidr_range,
+            "gatewayAddress": s.gateway_ip,
+            "region": s.region,
+            "selfLink": f"https://www.googleapis.com/compute/v1/projects/{project}/regions/{s.region}/subnetworks/{s.name}",
+            "creationTimestamp": s.created_at.isoformat() + "Z" if s.created_at else None
+        })
+    
+    return {
+        "kind": "compute#subnetworkAggregatedList",
+        "items": items
     }
 
 @router.get("/projects/{project}/regions/{region}/subnetworks")

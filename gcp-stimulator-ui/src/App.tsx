@@ -14,6 +14,7 @@ import EventsPage from './pages/EventsPage';
 import SettingsPage from './pages/SettingsPage';
 import IAMDashboardPage from './pages/IAMDashboardPage';
 import ComputeDashboardPage from './pages/ComputeDashboardPage';
+import CreateInstancePage from './pages/CreateInstancePage';
 import VPCDashboardPage from './pages/VPCDashboardPage';
 import NetworksPage from './pages/NetworksPage';
 import SubnetsPage from './pages/SubnetsPage';
@@ -51,6 +52,7 @@ function App() {
             <Route path="/services/compute-engine">
               <Route index element={<ComputeDashboardPage />} />
               <Route path="instances" element={<ComputeDashboardPage />} />
+              <Route path="instances/create" element={<CreateInstancePage />} />
             </Route>
 
             {/* VPC Network Service Routes */}

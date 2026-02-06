@@ -83,13 +83,34 @@ class Subnet(Base):
     """Subnet within VPC Network"""
     __tablename__ = "subnets"
     
-    id = Column(String, primary_key=True)
+    id = Column(Integer, primary_key=True, autoincrement=True)
     name = Column(String, nullable=False)
     network = Column(String, nullable=False)  # Network name
     region = Column(String, nullable=False)
     ip_cidr_range = Column(String, nullable=False)  # e.g., "10.0.1.0/24"
     gateway_ip = Column(String)
     next_available_ip = Column(Integer, default=2)  # Start at .2 (skip .0, .1)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+
+class Firewall(Base):
+    """Firewall rule for VPC Network"""
+    __tablename__ = "firewalls"
+    
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    name = Column(String, nullable=False, unique=True)
+    network = Column(String, nullable=False)  # Network reference
+    project_id = Column(String, nullable=False)
+    description = Column(String)
+    direction = Column(String, default="INGRESS")  # INGRESS or EGRESS
+    priority = Column(Integer, default=1000)
+    source_ranges = Column(JSON)  # List of source IP ranges
+    destination_ranges = Column(JSON)  # List of destination IP ranges
+    source_tags = Column(JSON)  # List of source tags
+    target_tags = Column(JSON)  # List of target tags
+    allowed = Column(JSON)  # List of {protocol, ports} dicts
+    denied = Column(JSON)  # List of {protocol, ports} dicts
+    disabled = Column(Boolean, default=False)
     created_at = Column(DateTime, default=datetime.utcnow)
 
 

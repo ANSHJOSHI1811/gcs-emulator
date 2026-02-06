@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useProject } from '../contexts/ProjectContext';
 import { Link } from 'react-router-dom';
-import { Globe, Plus, Trash2, RefreshCw, AlertCircle, Network, ArrowRight, HelpCircle } from 'lucide-react';
+import { Globe, Plus, Trash2, RefreshCw, AlertCircle, Network, HelpCircle } from 'lucide-react';
 import { Modal, ModalFooter, ModalButton } from '../components/Modal';
 import { FormField, Input, RadioGroup } from '../components/FormFields';
 import { listNetworks, createNetwork, deleteNetwork } from '../api/networking';
@@ -295,38 +295,75 @@ const NetworksPage = () => {
             <Input
               type="text"
               value={formData.name}
-              onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+              onChange={(e) => setFormData({ ...formData, name: e.target.value.toLowerCase() })}
               placeholder="my-network"
-              pattern="[a-z]([-a-z0-9]*[a-z0-9])?"
               required
             />
           </FormField>
 
           <FormField label="Subnet Creation Mode">
-            <div className="mb-2 p-3 bg-blue-50 border border-blue-200 rounded-lg flex items-start gap-2">
-              <HelpCircle className="w-4 h-4 text-blue-600 mt-0.5 flex-shrink-0" />
-              <p className="text-xs text-blue-900">
-                <strong>Automatic:</strong> One subnet per region is automatically created. <strong>Custom:</strong> You manually define CIDR ranges and create subnets per region/zone.
-              </p>
+            <div className="mb-3 p-4 bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-200 rounded-xl flex items-start gap-3 shadow-sm">
+              <HelpCircle className="w-5 h-5 text-blue-600 mt-0.5 flex-shrink-0" />
+              <div className="text-sm text-blue-900 space-y-2">
+                <div>
+                  <strong className="font-semibold">🔷 Auto Mode:</strong> 
+                  <span className="ml-1">Automatically creates one /20 subnet in each of 16 GCP regions using the fixed CIDR range 10.128.0.0/9. Best for quick setup and multi-region deployments.</span>
+                </div>
+                <div>
+                  <strong className="font-semibold">🔧 Custom Mode:</strong> 
+                  <span className="ml-1">You define your own CIDR range and manually create subnets in specific regions. Ideal for precise IP management and isolated deployments.</span>
+                </div>
+              </div>
             </div>
             <RadioGroup
               name="subnetMode"
               value={formData.autoCreateSubnetworks.toString()}
-              onChange={(value) => setFormData({ ...formData, autoCreateSubnetworks: value === 'true' })}
+              onChange={(value) => {
+                setFormData({ 
+                  ...formData, 
+                  autoCreateSubnetworks: value === 'true',
+                  IPv4Range: value === 'true' ? '10.128.0.0/9' : '10.0.0.0/16'
+                });
+                setCidrError(null);
+              }}
               options={[
                 {
                   value: 'true',
-                  label: 'Automatic',
-                  description: 'One subnet created per region automatically'
+                  label: 'Automatic (Auto Mode)',
+                  description: '16 subnets auto-created | Fixed CIDR: 10.128.0.0/9'
                 },
                 {
                   value: 'false',
-                  label: 'Custom',
-                  description: 'You define IP ranges and create subnets'
+                  label: 'Custom (Manual Control)',
+                  description: 'Define your own CIDR and create subnets manually'
                 }
               ]}
             />
           </FormField>
+
+          {formData.autoCreateSubnetworks && (
+            <FormField 
+              label="VPC CIDR Range" 
+              help="This CIDR is fixed for auto-mode networks and covers all 16 regional subnets"
+            >
+              <div className="relative">
+                <Input
+                  type="text"
+                  value="10.128.0.0/9"
+                  disabled
+                  className="bg-gray-100 cursor-not-allowed text-gray-600 font-mono"
+                />
+                <div className="absolute right-3 top-1/2 -translate-y-1/2 bg-blue-100 text-blue-700 px-2 py-1 rounded text-xs font-semibold">
+                  READ-ONLY
+                </div>
+              </div>
+              <div className="mt-2 p-3 bg-green-50 border border-green-200 rounded-lg">
+                <p className="text-xs text-green-800">
+                  <strong>✓ Auto-Mode Benefit:</strong> 16 /20 subnets (4,096 IPs each) will be automatically created across all major GCP regions: us-central1, us-east1, europe-west1, asia-east1, and more.
+                </p>
+              </div>
+            </FormField>
+          )}
 
           {!formData.autoCreateSubnetworks && (
             <FormField

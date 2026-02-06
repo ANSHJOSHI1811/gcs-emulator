@@ -1,9 +1,8 @@
 import { useEffect, useState } from 'react';
 import { Cpu, Server, Plus, StopCircle, Play, Trash2, Network } from 'lucide-react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { apiClient } from '../api/client';
 import { Modal, ModalFooter, ModalButton } from '../components/Modal';
-import { FormField, Input, Select } from '../components/FormFields';
 import { useProject } from '../contexts/ProjectContext';
 import { listNetworks, listSubnets } from '../api/networking';
 
@@ -46,26 +45,17 @@ interface Subnet {
 }
 
 const ComputeDashboardPage = () => {
+  const navigate = useNavigate();
   const [zones, setZones] = useState<Zone[]>([]);
   const [instances, setInstances] = useState<Instance[]>([]);
   const [networks, setNetworks] = useState<Network[]>([]);
   const [subnets, setSubnets] = useState<Subnet[]>([]);
-  const [filteredSubnets, setFilteredSubnets] = useState<Subnet[]>([]);
   const [loading, setLoading] = useState(true);
-  const [showCreateModal, setShowCreateModal] = useState(false);
-  const [createLoading, setCreateLoading] = useState(false);
   const [selectedInstance, setSelectedInstance] = useState<Instance | null>(null);
   const [isInstanceDetailsOpen, setInstanceDetailsOpen] = useState(false);
   const [actionLoading, setActionLoading] = useState(false);
   const [statusFilter, setStatusFilter] = useState<string | null>(null);
   const { currentProject } = useProject();
-  const [formData, setFormData] = useState({
-    name: '',
-    zone: 'us-central1-a',
-    machineType: 'n1-standard-1',
-    network: 'default',
-    subnetwork: ''
-  });
 
   // Helper function to extract resource name from GCP URL
   const extractResourceName = (url: string): string => {
@@ -132,27 +122,6 @@ const ComputeDashboardPage = () => {
     }
   };
 
-  // Filter subnets when network or zone changes
-  useEffect(() => {
-    if (formData.network && formData.zone) {
-      const region = formData.zone.substring(0, formData.zone.lastIndexOf('-')); // Extract region from zone
-      const filtered = subnets.filter(subnet => {
-        const subnetNetwork = subnet.network.split('/').pop();
-        return subnetNetwork === formData.network && subnet.region === region;
-      });
-      setFilteredSubnets(filtered);
-      
-      // Auto-select first subnet if available
-      if (filtered.length > 0 && !formData.subnetwork) {
-        setFormData(prev => ({ ...prev, subnetwork: filtered[0].name }));
-      } else if (filtered.length === 0) {
-        setFormData(prev => ({ ...prev, subnetwork: '' }));
-      }
-    } else {
-      setFilteredSubnets([]);
-    }
-  }, [formData.network, formData.zone, subnets]);
-
   const getStatusColor = (status: string) => {
     switch (status?.toUpperCase()) {
       case 'RUNNING':
@@ -171,48 +140,6 @@ const ComputeDashboardPage = () => {
         return 'bg-red-100 text-red-800';
       default:
         return 'bg-blue-100 text-blue-800';
-    }
-  };
-
-  const handleCreateInstance = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setCreateLoading(true);
-    try {
-      const region = formData.zone.substring(0, formData.zone.lastIndexOf('-'));
-      const networkInterfaces: any = {
-        network: `projects/${currentProject}/global/networks/${formData.network}`
-      };
-      
-      // Add subnetwork if selected
-      if (formData.subnetwork) {
-        networkInterfaces.subnetwork = `projects/${currentProject}/regions/${region}/subnetworks/${formData.subnetwork}`;
-      }
-
-      await apiClient.post(
-        `/compute/v1/projects/${currentProject}/zones/${formData.zone}/instances`,
-        {
-          name: formData.name,
-          machineType: formData.machineType,
-          networkInterfaces: [networkInterfaces],
-          disks: [
-            {
-              boot: true,
-              initializeParams: {
-                diskSizeGb: '10',
-                sourceImage: 'projects/ubuntu-os-cloud/global/images/family/ubuntu-2004-lts'
-              }
-            }
-          ]
-        }
-      );
-      setShowCreateModal(false);
-      setFormData({ name: '', zone: 'us-central1-a', machineType: 'n1-standard-1', network: 'default', subnetwork: '' });
-      await loadData();
-    } catch (error: any) {
-      console.error('Failed to create instance:', error);
-      alert(error.response?.data?.error?.message || 'Failed to create instance');
-    } finally {
-      setCreateLoading(false);
     }
   };
 
@@ -299,7 +226,7 @@ const ComputeDashboardPage = () => {
               </div>
             </div>
             <button
-              onClick={() => setShowCreateModal(true)}
+              onClick={() => navigate('/services/compute-engine/instances/create')}
               className="inline-flex items-center gap-2 px-4 h-10 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-all shadow-sm hover:shadow-md text-[13px] font-medium"
             >
               <Plus className="w-4 h-4" />
@@ -375,7 +302,7 @@ const ComputeDashboardPage = () => {
               Create a VM instance to get started with Compute Engine
             </p>
             <button
-              onClick={() => setShowCreateModal(true)}
+              onClick={() => navigate('/services/compute-engine/instances/create')}
               className="inline-flex items-center gap-2 px-4 h-9 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-all text-[13px] font-medium"
             >
               <Plus className="w-4 h-4" />
@@ -501,125 +428,6 @@ const ComputeDashboardPage = () => {
           </div>
         </div>
       </div>
-
-      {/* Create Instance Modal */}
-      <Modal
-        isOpen={showCreateModal}
-        onClose={() => setShowCreateModal(false)}
-        title="Create VM Instance"
-        description="Deploy a new virtual machine instance"
-        size="md"
-      >
-        <form onSubmit={handleCreateInstance} className="space-y-5">
-          <FormField
-            label="Instance Name"
-            required
-            help="Lowercase letters, numbers, and hyphens only"
-          >
-            <Input
-              type="text"
-              required
-              value={formData.name}
-              onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-              placeholder="my-instance"
-              pattern="[a-z0-9-]+"
-            />
-          </FormField>
-
-          <FormField label="Zone" required>
-            <Select
-              required
-              value={formData.zone}
-              onChange={(e) => setFormData({ ...formData, zone: e.target.value })}
-            >
-              {zones.map(zone => (
-                <option key={zone.name} value={zone.name}>
-                  {zone.name} ({zone.region})
-                </option>
-              ))}
-            </Select>
-          </FormField>
-
-          <FormField label="Machine Type" required>
-            <Select
-              required
-              value={formData.machineType}
-              onChange={(e) => setFormData({ ...formData, machineType: e.target.value })}
-            >
-              <option value="e2-micro">e2-micro (2 vCPUs, 1 GB RAM)</option>
-              <option value="e2-small">e2-small (2 vCPUs, 2 GB RAM)</option>
-              <option value="e2-medium">e2-medium (2 vCPUs, 4 GB RAM)</option>
-              <option value="n1-standard-1">n1-standard-1 (1 vCPU, 3.75 GB RAM)</option>
-              <option value="n1-standard-2">n1-standard-2 (2 vCPUs, 7.5 GB RAM)</option>
-              <option value="n1-standard-4">n1-standard-4 (4 vCPUs, 15 GB RAM)</option>
-            </Select>
-          </FormField>
-
-          <FormField label="Network" required>
-            <Select
-              required
-              value={formData.network}
-              onChange={(e) => setFormData({ ...formData, network: e.target.value, subnetwork: '' })}
-            >
-              {networks.map(network => (
-                <option key={network.name} value={network.name}>
-                  {network.name}
-                </option>
-              ))}
-            </Select>
-          </FormField>
-
-          {filteredSubnets.length > 0 && (
-            <FormField 
-              label="Subnet" 
-              required
-              help={`${filteredSubnets.length} subnet(s) available in this region`}
-            >
-              <Select
-                required
-                value={formData.subnetwork}
-                onChange={(e) => setFormData({ ...formData, subnetwork: e.target.value })}
-              >
-                {filteredSubnets.map(subnet => (
-                  <option key={subnet.name} value={subnet.name}>
-                    {subnet.name} ({subnet.ipCidrRange})
-                  </option>
-                ))}
-              </Select>
-            </FormField>
-          )}
-
-          {filteredSubnets.length === 0 && formData.network && (
-            <div className="bg-yellow-50 border-2 border-yellow-100 p-4 rounded-xl">
-              <p className="text-xs text-yellow-900 font-medium">
-                <strong className="font-bold">No subnets found:</strong> <Link to={`/services/vpc/subnets?network=${formData.network}`} className="text-blue-600 hover:underline font-bold">Create a subnet</Link> in the selected network and region first.
-              </p>
-            </div>
-          )}
-
-          <div className="bg-blue-50 border-2 border-blue-100 p-4 rounded-xl">
-            <p className="text-xs text-blue-900 font-medium">
-              <strong className="font-bold">Note:</strong> Instance will be created with Ubuntu 20.04 LTS image and a Docker container will be automatically spawned.
-            </p>
-          </div>
-
-          <ModalFooter>
-            <ModalButton
-              variant="secondary"
-              onClick={() => setShowCreateModal(false)}
-            >
-              Cancel
-            </ModalButton>
-            <ModalButton
-              variant="primary"
-              type="submit"
-              loading={createLoading}
-            >
-              Create
-            </ModalButton>
-          </ModalFooter>
-        </form>
-      </Modal>
 
       {/* Instance Details Modal */}
       {selectedInstance && (

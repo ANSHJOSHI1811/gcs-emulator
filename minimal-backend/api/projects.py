@@ -1,9 +1,16 @@
 """Project Management API"""
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException
+from pydantic import BaseModel
 from sqlalchemy.orm import Session
+from datetime import datetime
 from database import get_db, Project
+import random
 
 router = APIRouter()
+
+class ProjectCreate(BaseModel):
+    projectId: str
+    name: str = None
 
 @router.get("/projects")
 def list_projects(db: Session = Depends(get_db)):
@@ -16,4 +23,33 @@ def list_projects(db: Session = Depends(get_db)):
             "projectNumber": str(p.project_number) if p.project_number else "0",
             "lifecycleState": "ACTIVE"
         } for p in projects]
+    }
+
+@router.post("/projects")
+def create_project(project_data: ProjectCreate, db: Session = Depends(get_db)):
+    """Create a new project"""
+    # Check if project already exists
+    existing = db.query(Project).filter_by(id=project_data.projectId).first()
+    if existing:
+        raise HTTPException(status_code=409, detail=f"Project {project_data.projectId} already exists")
+    
+    # Create new project
+    project = Project(
+        id=project_data.projectId,
+        name=project_data.name or project_data.projectId,
+        project_number=random.randint(100000, 999999),
+        location="us-central1",
+        created_at=datetime.utcnow(),
+        updated_at=datetime.utcnow(),
+        compute_api_enabled=True
+    )
+    db.add(project)
+    db.commit()
+    db.refresh(project)
+    
+    return {
+        "projectId": project.id,
+        "name": project.name,
+        "projectNumber": str(project.project_number),
+        "lifecycleState": "ACTIVE"
     }

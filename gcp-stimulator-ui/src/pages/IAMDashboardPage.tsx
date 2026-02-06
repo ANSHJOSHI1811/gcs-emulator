@@ -374,7 +374,7 @@ const IAMDashboardPage = () => {
 
           <ModalFooter>
             <ModalButton
-              variant="danger"
+              variant="primary"
               onClick={() => handleDeleteServiceAccount(selectedAccount.email)}
               loading={deleteLoading}
             >

@@ -342,9 +342,8 @@ const SubnetsPage = () => {
             <Input
               type="text"
               value={formData.name}
-              onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+              onChange={(e) => setFormData({ ...formData, name: e.target.value.toLowerCase() })}
               placeholder="my-subnet"
-              pattern="[a-z]([-a-z0-9]*[a-z0-9])?"
               required
             />
           </FormField>
@@ -416,6 +415,18 @@ const SubnetsPage = () => {
               <div className="mt-2 flex items-center gap-2 text-xs text-green-600">
                 <CheckCircle className="w-4 h-4" />
                 Gateway: {getGatewayIP(formData.ipCidrRange)} • {calculateUsableIPs(formData.ipCidrRange).toLocaleString()} usable IPs
+              </div>
+            )}
+            {!showCreateModal && (
+              <div className="mt-3 bg-amber-50 border border-amber-300 rounded-lg p-3">
+                <p className="text-xs text-amber-900">
+                  <strong className="text-red-700">⚠️ IMPORTANT:</strong> Each subnet must have a UNIQUE, non-overlapping CIDR within the VPC range.<br/>
+                  <span className="mt-2 block">Example for VPC <code className="bg-amber-200 px-1 py-0.5 rounded">10.0.0.0/20</code>:</span>
+                  • Subnet 1: <code className="bg-amber-200 px-1 py-0.5 rounded">10.0.0.0/24</code> (256 IPs)<br/>
+                  • Subnet 2: <code className="bg-amber-200 px-1 py-0.5 rounded">10.0.1.0/24</code> (256 IPs)<br/>
+                  • Subnet 3: <code className="bg-amber-200 px-1 py-0.5 rounded">10.0.2.0/24</code> (256 IPs)<br/>
+                  ❌ DON'T reuse the same CIDR!
+                </p>
               </div>
             )}
           </FormField>

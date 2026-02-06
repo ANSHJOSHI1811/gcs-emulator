@@ -305,9 +305,8 @@ const RoutesPage = () => {
             <Input
               type="text"
               value={formData.name}
-              onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+              onChange={(e) => setFormData({ ...formData, name: e.target.value.toLowerCase() })}
               placeholder="my-route"
-              pattern="[a-z]([-a-z0-9]*[a-z0-9])?"
               required
             />
           </FormField>
