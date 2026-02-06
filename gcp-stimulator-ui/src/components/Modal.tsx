@@ -25,27 +25,27 @@ export const Modal = ({ isOpen, onClose, title, description, children, size = 'm
     <div className="fixed inset-0 z-50 overflow-y-auto">
       {/* Backdrop */}
       <div 
-        className="fixed inset-0 bg-black/60 backdrop-blur-sm transition-opacity animate-fadeIn"
+        className="fixed inset-0 bg-black/70 backdrop-blur-sm transition-opacity animate-fadeIn"
         onClick={onClose}
       />
       
       {/* Modal */}
       <div className="flex min-h-full items-center justify-center p-4">
         <div 
-          className={`relative bg-white rounded-2xl shadow-2xl ${sizeClasses[size]} w-full transform transition-all animate-slideUp`}
+          className={`relative bg-white rounded-2xl shadow-2xl ${sizeClasses[size]} w-full transform transition-all animate-slideUp border border-gray-100`}
           onClick={(e) => e.stopPropagation()}
         >
           {/* Header */}
-          <div className="px-6 py-5 border-b border-gray-100 flex items-start justify-between">
+          <div className="px-6 py-5 border-b border-gray-200 flex items-start justify-between bg-gradient-to-r from-gray-50 to-white">
             <div className="flex-1 pr-4">
-              <h2 className="text-xl font-bold text-gray-900">{title}</h2>
+              <h2 className="text-[18px] font-bold text-gray-900">{title}</h2>
               {description && (
-                <p className="text-sm text-gray-500 mt-1">{description}</p>
+                <p className="text-[13px] text-gray-600 mt-1">{description}</p>
               )}
             </div>
             <button
               onClick={onClose}
-              className="text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg p-2 transition-colors flex-shrink-0"
+              className="text-gray-400 hover:text-gray-700 hover:bg-gray-200 rounded-lg p-2 transition-all flex-shrink-0"
               aria-label="Close"
             >
               <X className="w-5 h-5" />
@@ -53,7 +53,7 @@ export const Modal = ({ isOpen, onClose, title, description, children, size = 'm
           </div>
           
           {/* Content */}
-          <div className="px-6 py-6">
+          <div className="px-6 py-6 max-h-[calc(100vh-200px)] overflow-y-auto custom-scrollbar">
             {children}
           </div>
         </div>
@@ -89,10 +89,10 @@ export const ModalButton = ({
   loading = false,
   children,
 }: ModalButtonProps) => {
-  const baseClasses = 'px-5 py-2.5 text-sm font-semibold rounded-xl transition-all disabled:opacity-50 disabled:cursor-not-allowed';
+  const baseClasses = 'px-4 py-2.5 text-[13px] font-medium rounded-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed shadow-sm hover:shadow-md';
   
   const variantClasses = {
-    primary: 'text-white bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 shadow-lg shadow-blue-500/30',
+    primary: 'text-white bg-blue-600 hover:bg-blue-700',
     secondary: 'text-gray-700 bg-white border-2 border-gray-300 hover:bg-gray-50 hover:border-gray-400',
   };
 
@@ -104,11 +104,8 @@ export const ModalButton = ({
       className={`${baseClasses} ${variantClasses[variant]}`}
     >
       {loading ? (
-        <span className="flex items-center gap-2">
-          <svg className="animate-spin h-4 w-4" fill="none" viewBox="0 0 24 24">
-            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-          </svg>
+        <span className="flex items-center justify-center gap-2">
+          <div className="w-4 h-4 border-2 border-current border-t-transparent rounded-full animate-spin"></div>
           Loading...
         </span>
       ) : children}
