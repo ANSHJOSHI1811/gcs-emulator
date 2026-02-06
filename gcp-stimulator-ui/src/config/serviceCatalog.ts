@@ -55,9 +55,9 @@ export const serviceCategories: ServiceCategory[] = [
         category: 'Compute',
         enabled: true,
         sidebarLinks: [
-          { label: 'Dashboard', path: '/services/compute-engine' },
           { label: 'VM Instances', path: '/services/compute-engine/instances', icon: Cpu },
-          { label: 'Zones', path: '/services/compute-engine/zones' },
+          { label: 'Instance Groups', path: '/services/compute-engine/groups' },
+          { label: 'Disks', path: '/services/compute-engine/disks' },
         ],
       },
     ],
@@ -74,8 +74,7 @@ export const serviceCategories: ServiceCategory[] = [
         category: 'Networking',
         enabled: true,
         sidebarLinks: [
-          { label: 'Dashboard', path: '/services/vpc' },
-          { label: 'Networks', path: '/services/vpc/networks', icon: Globe },
+          { label: 'VPC Networks', path: '/services/vpc/networks', icon: Globe },
           { label: 'Subnets', path: '/services/vpc/subnets', icon: Network },
           { label: 'Firewall Rules', path: '/services/vpc/firewalls', icon: Lock },
           { label: 'Routes', path: '/services/vpc/routes', icon: Route },

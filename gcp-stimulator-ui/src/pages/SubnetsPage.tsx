@@ -1,9 +1,11 @@
 import { useEffect, useState } from 'react';
 import { useProject } from '../contexts/ProjectContext';
-import { Network, Plus, Trash2, RefreshCw, AlertCircle } from 'lucide-react';
-import { apiClient } from '../api/client';
+import { Link, useSearchParams } from 'react-router-dom';
+import { Network, Plus, Trash2, RefreshCw, AlertCircle, CheckCircle, Globe, ArrowLeft } from 'lucide-react';
 import { Modal, ModalFooter, ModalButton } from '../components/Modal';
 import { FormField, Input, Select } from '../components/FormFields';
+import { listNetworks, listSubnets, createSubnet, deleteSubnet } from '../api/networking';
+import { validateCIDR, calculateUsableIPs, getGatewayIP, isSubnetWithinVPC } from '../utils/cidr';
 
 interface Subnet {
   id: string;
@@ -19,10 +21,13 @@ interface Subnet {
 interface NetworkOption {
   name: string;
   selfLink: string;
+  IPv4Range?: string;
 }
 
 const SubnetsPage = () => {
   const { currentProject } = useProject();
+  const [searchParams] = useSearchParams();
+  const networkFilter = searchParams.get('network');
   const [subnets, setSubnets] = useState<Subnet[]>([]);
   const [networks, setNetworks] = useState<NetworkOption[]>([]);
   const [loading, setLoading] = useState(true);
@@ -37,6 +42,18 @@ const SubnetsPage = () => {
     privateIpGoogleAccess: false,
   });
   const [error, setError] = useState<string | null>(null);
+  const [cidrError, setCidrError] = useState<string | null>(null);
+  const [cidrValid, setCidrValid] = useState<boolean>(false);
+
+  // Pre-select network if coming from Networks page
+  useEffect(() => {
+    if (networkFilter && networks.length > 0) {
+      const matchingNetwork = networks.find(n => n.name === networkFilter);
+      if (matchingNetwork) {
+        setFormData(prev => ({ ...prev, network: matchingNetwork.selfLink }));
+      }
+    }
+  }, [networkFilter, networks]);
 
   const regions = [
     'us-central1', 'us-east1', 'us-west1', 'us-west2',
@@ -53,22 +70,23 @@ const SubnetsPage = () => {
       setError(null);
 
       // Load networks
-      const networksRes = await apiClient.get(`/compute/v1/projects/${currentProject}/global/networks`);
-      setNetworks(networksRes.data.items || []);
+      const networksList = await listNetworks(currentProject);
+      setNetworks(networksList as any);
 
       // Load subnets from all regions
-      const subnetsRes = await apiClient.get(`/compute/v1/projects/${currentProject}/aggregated/subnetworks`);
-      const allSubnets: Subnet[] = [];
+      const subnetsList = await listSubnets(currentProject);
+      const allSubnets = subnetsList as any;
       
-      if (subnetsRes.data.items) {
-        Object.entries(subnetsRes.data.items).forEach(([, regionData]: [string, any]) => {
-          if (regionData.subnetworks) {
-            allSubnets.push(...regionData.subnetworks);
-          }
+      // Filter by network if specified in URL
+      if (networkFilter) {
+        const filtered = allSubnets.filter((s: Subnet) => {
+          const subnetNetwork = s.network.split('/').pop();
+          return subnetNetwork === networkFilter;
         });
+        setSubnets(filtered);
+      } else {
+        setSubnets(allSubnets);
       }
-      
-      setSubnets(allSubnets);
     } catch (error: any) {
       console.error('Failed to load subnets:', error);
       setError('Failed to load subnets. Please try again.');
@@ -81,17 +99,33 @@ const SubnetsPage = () => {
     e.preventDefault();
     setCreateLoading(true);
     setError(null);
+    setCidrError(null);
+
+    // Validate CIDR
+    const validation = validateCIDR(formData.ipCidrRange);
+    if (!validation.valid) {
+      setCidrError(validation.error || 'Invalid CIDR');
+      setCreateLoading(false);
+      return;
+    }
+
+    // Check if subnet is within VPC CIDR
+    const selectedNetwork = networks.find(n => n.selfLink === formData.network);
+    if (selectedNetwork?.IPv4Range) {
+      if (!isSubnetWithinVPC(selectedNetwork.IPv4Range, formData.ipCidrRange)) {
+        setCidrError(`Subnet must be within VPC CIDR range ${selectedNetwork.IPv4Range}`);
+        setCreateLoading(false);
+        return;
+      }
+    }
 
     try {
-      await apiClient.post(
-        `/compute/v1/projects/${currentProject}/regions/${formData.region}/subnetworks`,
-        {
-          name: formData.name,
-          network: formData.network,
-          ipCidrRange: formData.ipCidrRange,
-          privateIpGoogleAccess: formData.privateIpGoogleAccess,
-        }
-      );
+      await createSubnet(currentProject, formData.region, {
+        name: formData.name,
+        network: formData.network,
+        region: formData.region,
+        ipCidrRange: formData.ipCidrRange,
+      });
 
       setShowCreateModal(false);
       setFormData({
@@ -101,10 +135,12 @@ const SubnetsPage = () => {
         ipCidrRange: '',
         privateIpGoogleAccess: false,
       });
+      setCidrError(null);
+      setCidrValid(false);
       await loadData();
     } catch (error: any) {
       console.error('Failed to create subnet:', error);
-      setError(error.response?.data?.error?.message || 'Failed to create subnet');
+      setError(error.response?.data?.detail || error.message || 'Failed to create subnet');
     } finally {
       setCreateLoading(false);
     }
@@ -119,13 +155,11 @@ const SubnetsPage = () => {
     setError(null);
 
     try {
-      await apiClient.delete(
-        `/compute/v1/projects/${currentProject}/regions/${region}/subnetworks/${subnetName}`
-      );
+      await deleteSubnet(currentProject, region, subnetName);
       await loadData();
     } catch (error: any) {
       console.error('Failed to delete subnet:', error);
-      setError(error.response?.data?.error?.message || 'Failed to delete subnet');
+      setError(error.response?.data?.detail || error.message || 'Failed to delete subnet');
     } finally {
       setDeleteLoading(null);
     }
@@ -143,9 +177,22 @@ const SubnetsPage = () => {
       <div className="bg-white border-b border-gray-200 px-8 py-6">
         <div className="flex items-center justify-between">
           <div>
-            <h1 className="text-2xl font-semibold text-gray-900">Subnets</h1>
-            <p className="text-sm text-gray-500 mt-1">
-              Manage subnet IP ranges for your VPC networks
+            <div className="flex items-center gap-3 mb-2">
+              <Link to="/services/vpc/networks" className="text-gray-500 hover:text-gray-700">
+                <ArrowLeft className="w-5 h-5" />
+              </Link>
+              <h1 className="text-2xl font-semibold text-gray-900">Subnets</h1>
+            </div>
+            <p className="text-sm text-gray-500">
+              {networkFilter ? (
+                <>
+                  Showing subnets for network: <span className="font-semibold text-gray-900">{networkFilter}</span> • <Link to="/services/vpc/subnets" className="text-blue-600 hover:underline">Show all</Link>
+                </>
+              ) : (
+                <>
+                  Manage subnet IP ranges for your VPC networks • <Link to="/services/vpc/networks" className="text-blue-600 hover:underline">View Networks</Link>
+                </>
+              )}
             </p>
           </div>
           <div className="flex items-center gap-3">
@@ -222,6 +269,9 @@ const SubnetsPage = () => {
                     IP Range
                   </th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Available IPs
+                  </th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                     Gateway
                   </th>
                   <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
@@ -251,7 +301,12 @@ const SubnetsPage = () => {
                       <div className="text-sm font-mono text-gray-900">{subnet.ipCidrRange}</div>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
-                      <div className="text-sm font-mono text-gray-900">{subnet.gatewayAddress || '-'}</div>
+                      <div className="text-sm text-gray-900">
+                        {calculateUsableIPs(subnet.ipCidrRange).toLocaleString()}
+                      </div>
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap">
+                      <div className="text-sm font-mono text-gray-900">{subnet.gatewayAddress || getGatewayIP(subnet.ipCidrRange)}</div>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
                       <button
@@ -331,15 +386,38 @@ const SubnetsPage = () => {
             label="IP CIDR Range"
             required
             help="Example: 10.0.0.0/24, 192.168.1.0/24"
+            error={cidrError || undefined}
           >
             <Input
               type="text"
               value={formData.ipCidrRange}
-              onChange={(e) => setFormData({ ...formData, ipCidrRange: e.target.value })}
+              onChange={(e) => {
+                setFormData({ ...formData, ipCidrRange: e.target.value });
+                setCidrError(null);
+                setCidrValid(false);
+              }}
               placeholder="10.0.0.0/24"
               className="font-mono"
               required
+              onBlur={() => {
+                if (formData.ipCidrRange) {
+                  const validation = validateCIDR(formData.ipCidrRange);
+                  if (!validation.valid) {
+                    setCidrError(validation.error || null);
+                    setCidrValid(false);
+                  } else {
+                    setCidrError(null);
+                    setCidrValid(true);
+                  }
+                }
+              }}
             />
+            {cidrValid && formData.ipCidrRange && (
+              <div className="mt-2 flex items-center gap-2 text-xs text-green-600">
+                <CheckCircle className="w-4 h-4" />
+                Gateway: {getGatewayIP(formData.ipCidrRange)} • {calculateUsableIPs(formData.ipCidrRange).toLocaleString()} usable IPs
+              </div>
+            )}
           </FormField>
 
           <div className="flex items-start gap-3 p-4 border-2 border-gray-200 rounded-xl hover:border-gray-300 transition-all">

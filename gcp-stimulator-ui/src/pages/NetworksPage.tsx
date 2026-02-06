@@ -1,14 +1,17 @@
 import { useEffect, useState } from 'react';
 import { useProject } from '../contexts/ProjectContext';
-import { Globe, Plus, Trash2, RefreshCw, AlertCircle } from 'lucide-react';
-import { apiClient } from '../api/client';
+import { Link } from 'react-router-dom';
+import { Globe, Plus, Trash2, RefreshCw, AlertCircle, Network, ArrowRight, HelpCircle } from 'lucide-react';
 import { Modal, ModalFooter, ModalButton } from '../components/Modal';
 import { FormField, Input, RadioGroup } from '../components/FormFields';
+import { listNetworks, createNetwork, deleteNetwork } from '../api/networking';
+import { validateCIDR, calculateUsableIPs, getGatewayIP } from '../utils/cidr';
 
 interface Network {
   id: number;
   name: string;
   autoCreateSubnetworks: boolean;
+  IPv4Range?: string;
   creationTimestamp?: string;
   selfLink?: string;
   dockerNetworkName?: string;
@@ -24,7 +27,9 @@ const NetworksPage = () => {
   const [formData, setFormData] = useState({
     name: '',
     autoCreateSubnetworks: true,
+    IPv4Range: '10.128.0.0/16',
   });
+  const [cidrError, setCidrError] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -42,8 +47,8 @@ const NetworksPage = () => {
     try {
       setLoading(true);
       setError(null);
-      const response = await apiClient.get(`/compute/v1/projects/${currentProject}/global/networks`);
-      setNetworks(response.data.items || []);
+      const networksList = await listNetworks(currentProject);
+      setNetworks(networksList as any);
     } catch (error: any) {
       console.error('Failed to load networks:', error);
       setError('Failed to load networks. Please try again.');
@@ -56,18 +61,32 @@ const NetworksPage = () => {
     e.preventDefault();
     setCreateLoading(true);
     setError(null);
+    setCidrError(null);
+
+    // Validate CIDR if provided and custom mode
+    if (!formData.autoCreateSubnetworks && formData.IPv4Range) {
+      const validation = validateCIDR(formData.IPv4Range);
+      if (!validation.valid) {
+        setCidrError(validation.error || 'Invalid CIDR');
+        setCreateLoading(false);
+        return;
+      }
+    }
 
     try {
-      await apiClient.post(`/compute/v1/projects/${currentProject}/global/networks`, {
+      await createNetwork(currentProject, {
         name: formData.name,
         autoCreateSubnetworks: formData.autoCreateSubnetworks,
+        IPv4Range: !formData.autoCreateSubnetworks ? formData.IPv4Range : undefined,
       });
 
       setShowCreateModal(false);
       setFormData({
         name: '',
         autoCreateSubnetworks: true,
+        IPv4Range: '10.128.0.0/16',
       });
+      setCidrError(null);
       await loadNetworks();
     } catch (error: any) {
       console.error('Failed to create network:', error);
@@ -86,7 +105,7 @@ const NetworksPage = () => {
     setError(null);
 
     try {
-      await apiClient.delete(`/compute/v1/projects/${currentProject}/global/networks/${networkName}`);
+      await deleteNetwork(currentProject, networkName);
       await loadNetworks();
     } catch (error: any) {
       console.error('Failed to delete network:', error);
@@ -104,7 +123,7 @@ const NetworksPage = () => {
           <div>
             <h1 className="text-2xl font-semibold text-gray-900">VPC Networks</h1>
             <p className="text-sm text-gray-500 mt-1">
-              Manage your Virtual Private Cloud networks
+              Manage your Virtual Private Cloud networks • <Link to="/services/vpc/subnets" className="text-blue-600 hover:underline">View Subnets</Link> • <Link to="/services/compute-engine" className="text-blue-600 hover:underline">View Instances</Link>
             </p>
           </div>
           <div className="flex items-center gap-3">
@@ -175,6 +194,9 @@ const NetworksPage = () => {
                     Subnet Mode
                   </th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    CIDR Range
+                  </th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                     Docker Network
                   </th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
@@ -207,6 +229,18 @@ const NetworksPage = () => {
                       </span>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
+                      {network.IPv4Range ? (
+                        <div>
+                          <div className="text-sm text-gray-900 font-mono">{network.IPv4Range}</div>
+                          <div className="text-xs text-gray-500">
+                            {calculateUsableIPs(network.IPv4Range).toLocaleString()} usable IPs
+                          </div>
+                        </div>
+                      ) : (
+                        <span className="text-sm text-gray-400">-</span>
+                      )}
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap">
                       <div className="text-sm text-gray-600 font-mono">{network.dockerNetworkName || '-'}</div>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
@@ -217,14 +251,24 @@ const NetworksPage = () => {
                       </div>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
-                      <button
-                        onClick={() => handleDelete(network.name)}
-                        disabled={deleteLoading === network.name || network.name === 'default'}
-                        className="text-red-600 hover:text-red-900 disabled:opacity-50 disabled:cursor-not-allowed"
-                        title={network.name === 'default' ? 'Cannot delete default network' : 'Delete network'}
-                      >
-                        <Trash2 className="w-4 h-4" />
-                      </button>
+                      <div className="flex items-center justify-end gap-2">
+                        <Link
+                          to={`/services/vpc/subnets?network=${network.name}`}
+                          className="text-blue-600 hover:text-blue-900 flex items-center gap-1"
+                          title="View subnets"
+                        >
+                          <Network className="w-4 h-4" />
+                          <span className="text-xs">Subnets</span>
+                        </Link>
+                        <button
+                          onClick={() => handleDelete(network.name)}
+                          disabled={deleteLoading === network.name || network.name === 'default'}
+                          className="text-red-600 hover:text-red-900 disabled:opacity-50 disabled:cursor-not-allowed"
+                          title={network.name === 'default' ? 'Cannot delete default network' : 'Delete network'}
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      </div>
                     </td>
                   </tr>
                 ))}
@@ -259,6 +303,12 @@ const NetworksPage = () => {
           </FormField>
 
           <FormField label="Subnet Creation Mode">
+            <div className="mb-2 p-3 bg-blue-50 border border-blue-200 rounded-lg flex items-start gap-2">
+              <HelpCircle className="w-4 h-4 text-blue-600 mt-0.5 flex-shrink-0" />
+              <p className="text-xs text-blue-900">
+                <strong>Automatic:</strong> One subnet per region is automatically created. <strong>Custom:</strong> You manually define CIDR ranges and create subnets per region/zone.
+              </p>
+            </div>
             <RadioGroup
               name="subnetMode"
               value={formData.autoCreateSubnetworks.toString()}
@@ -267,16 +317,49 @@ const NetworksPage = () => {
                 {
                   value: 'true',
                   label: 'Automatic',
-                  description: 'Subnets are created automatically'
+                  description: 'One subnet created per region automatically'
                 },
                 {
                   value: 'false',
                   label: 'Custom',
-                  description: 'You create subnets manually'
+                  description: 'You define IP ranges and create subnets'
                 }
               ]}
             />
           </FormField>
+
+          {!formData.autoCreateSubnetworks && (
+            <FormField
+              label="IPv4 CIDR Range"
+              required
+              help="Private IP range for the VPC (e.g., 10.0.0.0/16)"
+              error={cidrError || undefined}
+            >
+              <Input
+                type="text"
+                value={formData.IPv4Range}
+                onChange={(e) => {
+                  setFormData({ ...formData, IPv4Range: e.target.value });
+                  setCidrError(null);
+                }}
+                placeholder="10.0.0.0/16"
+                required
+                onBlur={() => {
+                  if (formData.IPv4Range) {
+                    const validation = validateCIDR(formData.IPv4Range);
+                    if (!validation.valid) {
+                      setCidrError(validation.error || null);
+                    }
+                  }
+                }}
+              />
+              {formData.IPv4Range && !cidrError && (
+                <div className="mt-2 text-xs text-gray-600">
+                  Gateway: {getGatewayIP(formData.IPv4Range)} • {calculateUsableIPs(formData.IPv4Range).toLocaleString()} usable IPs
+                </div>
+              )}
+            </FormField>
+          )}
 
           <ModalFooter>
             <ModalButton

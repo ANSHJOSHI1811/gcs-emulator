@@ -50,11 +50,12 @@ function App() {
             {/* Compute Engine Service Routes */}
             <Route path="/services/compute-engine">
               <Route index element={<ComputeDashboardPage />} />
+              <Route path="instances" element={<ComputeDashboardPage />} />
             </Route>
 
             {/* VPC Network Service Routes */}
             <Route path="/services/vpc">
-              <Route index element={<VPCDashboardPage />} />
+              <Route index element={<Navigate to="/services/vpc/networks" replace />} />
               <Route path="networks" element={<NetworksPage />} />
               <Route path="subnets" element={<SubnetsPage />} />
               <Route path="firewalls" element={<FirewallsPage />} />

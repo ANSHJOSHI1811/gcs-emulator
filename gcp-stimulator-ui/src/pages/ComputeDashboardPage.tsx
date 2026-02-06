@@ -1,24 +1,17 @@
 import { useEffect, useState } from 'react';
 import { Cpu, Server, Plus, StopCircle, Play, Trash2, Network } from 'lucide-react';
+import { Link } from 'react-router-dom';
 import { apiClient } from '../api/client';
 import { Modal, ModalFooter, ModalButton } from '../components/Modal';
 import { FormField, Input, Select } from '../components/FormFields';
 import { useProject } from '../contexts/ProjectContext';
+import { listNetworks, listSubnets } from '../api/networking';
 
 interface Zone {
   id: string;
   name: string;
   region: string;
   status: string;
-}
-
-interface MachineType {
-  id: string;
-  name: string;
-  description: string;
-  guestCpus: number;
-  memoryMb: number;
-  zone: string;
 }
 
 interface Instance {
@@ -43,11 +36,21 @@ interface Network {
   autoCreateSubnetworks: boolean;
 }
 
+interface Subnet {
+  id: string;
+  name: string;
+  network: string;
+  region: string;
+  ipCidrRange: string;
+  gatewayAddress?: string;
+}
+
 const ComputeDashboardPage = () => {
   const [zones, setZones] = useState<Zone[]>([]);
   const [instances, setInstances] = useState<Instance[]>([]);
-  const [machineTypes, setMachineTypes] = useState<MachineType[]>([]);
   const [networks, setNetworks] = useState<Network[]>([]);
+  const [subnets, setSubnets] = useState<Subnet[]>([]);
+  const [filteredSubnets, setFilteredSubnets] = useState<Subnet[]>([]);
   const [loading, setLoading] = useState(true);
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [createLoading, setCreateLoading] = useState(false);
@@ -60,7 +63,8 @@ const ComputeDashboardPage = () => {
     name: '',
     zone: 'us-central1-a',
     machineType: 'n1-standard-1',
-    network: 'default'
+    network: 'default',
+    subnetwork: ''
   });
 
   // Helper function to extract resource name from GCP URL
@@ -100,8 +104,12 @@ const ComputeDashboardPage = () => {
       setZones(zonesList);
 
       // Load networks
-      const networksRes = await apiClient.get(`/compute/v1/projects/${currentProject}/global/networks`);
-      setNetworks(networksRes.data.items || []);
+      const networksList = await listNetworks(currentProject);
+      setNetworks(networksList as any);
+
+      // Load subnets
+      const subnetsList = await listSubnets(currentProject);
+      setSubnets(subnetsList as any);
 
       // Load instances from all zones
       const allInstances: Instance[] = [];
@@ -117,21 +125,33 @@ const ComputeDashboardPage = () => {
         });
       }
       setInstances(allInstances);
-
-      // Load machine types for first zone
-      if (zonesList.length > 0) {
-        const firstZone = zonesList[0].name;
-        const mtRes = await apiClient.get(
-          `/compute/v1/projects/${currentProject}/zones/${firstZone}/machineTypes`
-        );
-        setMachineTypes(mtRes.data.items || []);
-      }
     } catch (error) {
       console.error('Failed to load compute data:', error);
     } finally {
       setLoading(false);
     }
   };
+
+  // Filter subnets when network or zone changes
+  useEffect(() => {
+    if (formData.network && formData.zone) {
+      const region = formData.zone.substring(0, formData.zone.lastIndexOf('-')); // Extract region from zone
+      const filtered = subnets.filter(subnet => {
+        const subnetNetwork = subnet.network.split('/').pop();
+        return subnetNetwork === formData.network && subnet.region === region;
+      });
+      setFilteredSubnets(filtered);
+      
+      // Auto-select first subnet if available
+      if (filtered.length > 0 && !formData.subnetwork) {
+        setFormData(prev => ({ ...prev, subnetwork: filtered[0].name }));
+      } else if (filtered.length === 0) {
+        setFormData(prev => ({ ...prev, subnetwork: '' }));
+      }
+    } else {
+      setFilteredSubnets([]);
+    }
+  }, [formData.network, formData.zone, subnets]);
 
   const getStatusColor = (status: string) => {
     switch (status?.toUpperCase()) {
@@ -158,16 +178,22 @@ const ComputeDashboardPage = () => {
     e.preventDefault();
     setCreateLoading(true);
     try {
+      const region = formData.zone.substring(0, formData.zone.lastIndexOf('-'));
+      const networkInterfaces: any = {
+        network: `projects/${currentProject}/global/networks/${formData.network}`
+      };
+      
+      // Add subnetwork if selected
+      if (formData.subnetwork) {
+        networkInterfaces.subnetwork = `projects/${currentProject}/regions/${region}/subnetworks/${formData.subnetwork}`;
+      }
+
       await apiClient.post(
         `/compute/v1/projects/${currentProject}/zones/${formData.zone}/instances`,
         {
           name: formData.name,
           machineType: formData.machineType,
-          networkInterfaces: [
-            {
-              network: `projects/${currentProject}/global/networks/${formData.network}`
-            }
-          ],
+          networkInterfaces: [networkInterfaces],
           disks: [
             {
               boot: true,
@@ -180,7 +206,7 @@ const ComputeDashboardPage = () => {
         }
       );
       setShowCreateModal(false);
-      setFormData({ name: '', zone: 'us-central1-a', machineType: 'n1-standard-1', network: 'default' });
+      setFormData({ name: '', zone: 'us-central1-a', machineType: 'n1-standard-1', network: 'default', subnetwork: '' });
       await loadData();
     } catch (error: any) {
       console.error('Failed to create instance:', error);
@@ -267,7 +293,7 @@ const ComputeDashboardPage = () => {
                 <div className="flex-1">
                   <h1 className="text-[28px] font-bold text-gray-900 mb-2">Compute Engine</h1>
                   <p className="text-[14px] text-gray-600 leading-relaxed">
-                    Virtual machines running in Google's data center
+                    Virtual machines running in Google's data center • <Link to="/services/vpc/networks" className="text-blue-600 hover:underline">View Networks</Link> • <Link to="/services/vpc/subnets" className="text-blue-600 hover:underline">View Subnets</Link>
                   </p>
                 </div>
               </div>
@@ -533,7 +559,7 @@ const ComputeDashboardPage = () => {
             <Select
               required
               value={formData.network}
-              onChange={(e) => setFormData({ ...formData, network: e.target.value })}
+              onChange={(e) => setFormData({ ...formData, network: e.target.value, subnetwork: '' })}
             >
               {networks.map(network => (
                 <option key={network.name} value={network.name}>
@@ -542,6 +568,34 @@ const ComputeDashboardPage = () => {
               ))}
             </Select>
           </FormField>
+
+          {filteredSubnets.length > 0 && (
+            <FormField 
+              label="Subnet" 
+              required
+              help={`${filteredSubnets.length} subnet(s) available in this region`}
+            >
+              <Select
+                required
+                value={formData.subnetwork}
+                onChange={(e) => setFormData({ ...formData, subnetwork: e.target.value })}
+              >
+                {filteredSubnets.map(subnet => (
+                  <option key={subnet.name} value={subnet.name}>
+                    {subnet.name} ({subnet.ipCidrRange})
+                  </option>
+                ))}
+              </Select>
+            </FormField>
+          )}
+
+          {filteredSubnets.length === 0 && formData.network && (
+            <div className="bg-yellow-50 border-2 border-yellow-100 p-4 rounded-xl">
+              <p className="text-xs text-yellow-900 font-medium">
+                <strong className="font-bold">No subnets found:</strong> <Link to={`/services/vpc/subnets?network=${formData.network}`} className="text-blue-600 hover:underline font-bold">Create a subnet</Link> in the selected network and region first.
+              </p>
+            </div>
+          )}
 
           <div className="bg-blue-50 border-2 border-blue-100 p-4 rounded-xl">
             <p className="text-xs text-blue-900 font-medium">
