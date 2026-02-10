@@ -2,7 +2,7 @@
 
 A **comprehensive Google Cloud Platform (GCP) emulator** that simulates GCP services locally with Docker integration. Built with FastAPI and PostgreSQL for the backend, and React with TypeScript for the frontend UI.
 
-> **✨ Now includes Compute Engine, VPC Networks, Cloud Storage, and IAM Service Accounts!**
+> **✨ Now includes Compute Engine, VPC Networks with Route Tables, Subnets, Cloud Storage, and IAM Service Accounts!**
 
 ## 📁 Project Structure
 
@@ -14,6 +14,7 @@ gcs-stimulator/
 │   │   ├── storage.py           # Cloud Storage API
 │   │   ├── compute.py           # Compute Engine API
 │   │   ├── vpc.py               # VPC Networks API
+│   │   ├── routes.py            # Route Tables API
 │   │   └── projects.py          # Projects API
 │   ├── database.py              # SQLAlchemy models
 │   ├── docker_manager.py        # Docker container management
@@ -55,7 +56,10 @@ gcs-stimulator/
 - ✅ **Docker Networks** - Each VPC = Docker network with bridge driver
 - ✅ **Network Mapping** - Automatic instance-to-network attachment
 - ✅ **Subnet Modes** - Auto and custom subnet support
-- ✅ **Internet Gateway** - Default gateway for outbound connectivity
+- ✅ **Internet Gateway** - Default gateway for outbound connectivity (0.0.0.0/0)
+- ✅ **Route Tables** - Manage routing with expandable data table UI
+- ✅ **Subnets** - Create and manage subnets with CIDR validation
+- ✅ **Routes** - Add and manage custom routes with priority levels
 
 ### 💾 Cloud Storage
 - ✅ **Bucket Management** - Create, list, delete buckets
@@ -74,17 +78,20 @@ gcs-stimulator/
 ### 🎨 Frontend UI
 - ✅ **Storage Dashboard** - Bucket and object management with upload/download
 - ✅ **Compute Dashboard** - Instance lifecycle management
-- ✅ **VPC Dashboard** - Network creation and management
+- ✅ **VPC Dashboard** - Network creation and management with quick access cards
+- ✅ **Route Tables** - Data table UI with expandable rows for detailed routes view
+- ✅ **Subnets & Routes** - Comprehensive networking resource management
 - ✅ **IAM Dashboard** - Service account management
 - ✅ **Real-time Updates** - Auto-refresh and health monitoring
-- ✅ **Responsive Design** - Modern React with Tailwind CSS
+- ✅ **Responsive Design** - Modern React with Tailwind CSS and Lucide icons
 
 ### 🗄️ Database & Architecture
 - ✅ **PostgreSQL RDS** - Production-grade database in AWS RDS
-- ✅ **8 Tables** - instances, networks, buckets, objects, projects, zones, machine_types, service_accounts
+- ✅ **11 Tables** - instances, networks, buckets, objects, projects, zones, machine_types, service_accounts, route_tables, routes, subnets
 - ✅ **Foreign Keys** - Proper relationships and data integrity
 - ✅ **Docker Backend** - Container lifecycle management via Docker API
 - ✅ **File System** - Hybrid storage (metadata in DB, files on disk)
+- ✅ **Auto-created Resources** - Internet Gateway routes created automatically for new VPCs
 
 ## 🚀 Quick Start
 
@@ -238,6 +245,18 @@ curl -o file.txt "http://localhost:8080/storage/v1/b/BUCKET/o/OBJECT?alt=media"
 - `GET /compute/v1/projects/{project}/global/networks/{network}` - Get network
 - `DELETE /compute/v1/projects/{project}/global/networks/{network}` - Delete network
 
+### Route Tables API
+- `GET /compute/v1/projects/{project}/global/routeTables` - List all route tables
+- `GET /compute/v1/projects/{project}/global/routeTables/{name}` - Get route table with embedded routes
+- `POST /compute/v1/projects/{project}/global/routeTables` - Create route table
+- `POST /compute/v1/projects/{project}/global/routeTables/{name}/addRoute` - Add route to table
+- `DELETE /compute/v1/projects/{project}/global/routeTables/{name}` - Delete route table
+
+### Routes API
+- `GET /compute/v1/projects/{project}/global/routes` - List all routes
+- `POST /compute/v1/projects/{project}/global/routes` - Create route
+- `DELETE /compute/v1/projects/{project}/global/routes/{route}` - Delete route
+
 ### Cloud Storage API
 - `GET /storage/v1/b` - List buckets
 - `POST /storage/v1/b` - Create bucket
@@ -304,25 +323,29 @@ Objects → PostgreSQL objects table (metadata)
 
 **Services Implemented:** 4/4
 - ✅ Compute Engine
-- ✅ VPC Networks  
+- ✅ VPC Networks with Routes & Subnets
 - ✅ Cloud Storage
 - ✅ IAM Service Accounts
 
 **API Compatibility:**
 - Compute: 11 endpoints
 - VPC: 4 endpoints
+- Routes: 7 endpoints
 - Storage: 8 endpoints
 - IAM: 4 endpoints
-- **Total: 27+ endpoints**
+- **Total: 34+ endpoints**
 
 **gcloud CLI Compatibility:**
 - Working: 14/16 commands (87.5%)
 - Not working: 2 commands (gcloud client bugs, not backend issues)
 
-**Frontend Pages:** 4/4
+**Frontend Pages:** 4/4 + Additional Views
 - Storage Dashboard ✅
 - Compute Dashboard ✅
-- VPC Dashboard ✅
+- VPC Dashboard with Networking Resources ✅
+- Route Tables Management ✅
+- Subnets Management ✅
+- Routes Management ✅
 - IAM Dashboard ✅
 
 ## 🧪 Testing
@@ -364,11 +387,15 @@ MIT License
 
 Contributions welcome! 
 
-### Recent Updates
-- ✅ Internet Gateway control-plane endpoints (Feb 4, 2026)
-- ✅ Fixed gcloud zones list compatibility (Feb 4, 2026)
-- ✅ Added comprehensive demo documentation (Feb 4, 2026)
-- ✅ Safe cleanup and optimization (Feb 4, 2026)
+### Recent Updates (Feb 10, 2026)
+- ✅ Route Tables management with data table UI
+- ✅ Expandable route table rows showing embedded routes
+- ✅ Lazy-loaded route details when expanding tables
+- ✅ VPC Dashboard integration with Networking Resources cards
+- ✅ Route Tables quick access from VPC page
+- ✅ Automatic Internet Gateway route creation (0.0.0.0/0)
+- ✅ Subnets and Routes management pages
+- ✅ Repository cleanup - removed documentation files
 
 ### Development Setup
 ```bash
@@ -407,6 +434,6 @@ See [GCLOUD_COMMANDS_REFERENCE.md](GCLOUD_COMMANDS_REFERENCE.md) for complete wo
 
 **Built with ❤️ for local GCP development and testing**
 
-**Last Updated:** February 5, 2026  
-**Version:** 1.0.0  
-**Status:** ✅ Production Ready
+**Last Updated:** February 10, 2026  
+**Version:** 2.0.0 - Route Tables Edition  
+**Status:** ✅ Production Ready with Advanced Networking
