@@ -47,6 +47,13 @@ def create_project(project_data: ProjectCreate, db: Session = Depends(get_db)):
     db.commit()
     db.refresh(project)
     
+    # Create default network for the project
+    from api.vpc import ensure_default_network
+    try:
+        ensure_default_network(db, project.id)
+    except Exception as e:
+        print(f"⚠️  Failed to create default network for {project.id}: {e}")
+    
     return {
         "projectId": project.id,
         "name": project.name,

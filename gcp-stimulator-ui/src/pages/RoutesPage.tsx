@@ -32,6 +32,7 @@ const RoutesPage = () => {
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [createLoading, setCreateLoading] = useState(false);
   const [deleteLoading, setDeleteLoading] = useState<string | null>(null);
+  const [filterTab, setFilterTab] = useState<'all' | 'system' | 'custom'>('all');
   const [formData, setFormData] = useState({
     name: '',
     network: '',
@@ -146,6 +147,10 @@ const RoutesPage = () => {
     return parts[parts.length - 1] || networkUrl;
   };
 
+  const isSystemRoute = (routeName: string): boolean => {
+    return routeName.startsWith('default-route-') || routeName.startsWith('route-');
+  };
+
   const getNextHop = (route: RouteRule): string => {
     if (route.nextHopGateway) {
       const parts = route.nextHopGateway.split('/');
@@ -156,6 +161,16 @@ const RoutesPage = () => {
     if (route.nextHopNetwork) return `Network: ${extractNetworkName(route.nextHopNetwork)}`;
     return '-';
   };
+
+  const filteredRoutes = routes.filter((route) => {
+    if (filterTab === 'system') {
+      return isSystemRoute(route.name);
+    }
+    if (filterTab === 'custom') {
+      return !isSystemRoute(route.name);
+    }
+    return true;
+  });
 
   return (
     <div className="h-full flex flex-col bg-gray-50">
@@ -215,7 +230,9 @@ const RoutesPage = () => {
           <div className="flex flex-col items-center justify-center h-64 bg-white rounded-lg border border-gray-200">
             <Navigation className="w-12 h-12 text-gray-400 mb-4" />
             <h3 className="text-lg font-medium text-gray-900 mb-2">No routes found</h3>
-            <p className="text-sm text-gray-500 mb-4">Create your first custom route</p>
+            <p className="text-sm text-gray-500 mb-4">
+              Routes are automatically created when you create a VPC or subnet. You can also create custom routes.
+            </p>
             <button
               onClick={() => setShowCreateModal(true)}
               className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700"
@@ -224,8 +241,62 @@ const RoutesPage = () => {
               Create Route
             </button>
           </div>
+        ) : filteredRoutes.length === 0 ? (
+          <div className="flex flex-col items-center justify-center h-64 bg-white rounded-lg border border-gray-200">
+            <Navigation className="w-12 h-12 text-gray-400 mb-4" />
+            <h3 className="text-lg font-medium text-gray-900 mb-2">No {filterTab} routes found</h3>
+            <p className="text-sm text-gray-500 mb-4">
+              {filterTab === 'system' && 'No system routes are available'}
+              {filterTab === 'custom' && 'Create your first custom route'}
+            </p>
+            {filterTab === 'custom' && (
+              <button
+                onClick={() => setShowCreateModal(true)}
+                className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700"
+              >
+                <Plus className="w-4 h-4" />
+                Create Route
+              </button>
+            )}
+          </div>
         ) : (
-          <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
+          <div className="space-y-4">
+            {/* Filter Tabs */}
+            <div className="flex gap-2 border-b border-gray-200">
+              <button
+                onClick={() => setFilterTab('all')}
+                className={`px-4 py-3 text-sm font-medium border-b-2 transition-colors ${
+                  filterTab === 'all'
+                    ? 'text-blue-600 border-blue-600'
+                    : 'text-gray-600 border-transparent hover:text-gray-900'
+                }`}
+              >
+                All Routes ({routes.length})
+              </button>
+              <button
+                onClick={() => setFilterTab('system')}
+                className={`px-4 py-3 text-sm font-medium border-b-2 transition-colors ${
+                  filterTab === 'system'
+                    ? 'text-blue-600 border-blue-600'
+                    : 'text-gray-600 border-transparent hover:text-gray-900'
+                }`}
+              >
+                System Routes ({routes.filter((r) => isSystemRoute(r.name)).length})
+              </button>
+              <button
+                onClick={() => setFilterTab('custom')}
+                className={`px-4 py-3 text-sm font-medium border-b-2 transition-colors ${
+                  filterTab === 'custom'
+                    ? 'text-blue-600 border-blue-600'
+                    : 'text-gray-600 border-transparent hover:text-gray-900'
+                }`}
+              >
+                Custom Routes ({routes.filter((r) => !isSystemRoute(r.name)).length})
+              </button>
+            </div>
+
+            {/* Routes Table */}
+            <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
             <table className="min-w-full divide-y divide-gray-200">
               <thead className="bg-gray-50">
                 <tr>
@@ -250,15 +321,26 @@ const RoutesPage = () => {
                 </tr>
               </thead>
               <tbody className="bg-white divide-y divide-gray-200">
-                {routes.map((route) => (
+                {filteredRoutes.map((route) => {
+                  const isSystem = isSystemRoute(route.name);
+                  return (
                   <tr key={route.id} className="hover:bg-gray-50">
                     <td className="px-6 py-4 whitespace-nowrap">
                       <div className="flex items-center">
-                        <Navigation className="w-5 h-5 text-purple-600 mr-3" />
+                        <Navigation className={`w-5 h-5 mr-3 ${
+                          isSystem ? 'text-blue-600' : 'text-purple-600'
+                        }`} />
                         <div>
-                          <div className="text-sm font-medium text-gray-900">{route.name}</div>
+                          <div className="flex items-center gap-2">
+                            <span className="text-sm font-medium text-gray-900">{route.name}</span>
+                            {isSystem && (
+                              <span className="px-2 py-1 bg-blue-100 text-blue-800 text-xs font-medium rounded">
+                                System
+                              </span>
+                            )}
+                          </div>
                           {route.description && (
-                            <div className="text-xs text-gray-500">{route.description}</div>
+                            <div className="text-xs text-gray-500 mt-1">{route.description}</div>
                           )}
                         </div>
                       </div>
@@ -278,16 +360,23 @@ const RoutesPage = () => {
                     <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
                       <button
                         onClick={() => handleDelete(route.name)}
-                        disabled={deleteLoading === route.name}
-                        className="text-red-600 hover:text-red-900 disabled:opacity-50"
+                        disabled={deleteLoading === route.name || isSystem}
+                        title={isSystem ? 'Cannot delete system routes' : 'Delete route'}
+                        className={`${
+                          isSystem
+                            ? 'text-gray-400 cursor-not-allowed'
+                            : 'text-red-600 hover:text-red-900 disabled:opacity-50'
+                        }`}
                       >
                         <Trash2 className="w-4 h-4" />
                       </button>
                     </td>
                   </tr>
-                ))}
+                  );
+                })}
               </tbody>
             </table>
+            </div>
           </div>
         )}
       </div>

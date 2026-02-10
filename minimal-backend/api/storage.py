@@ -6,20 +6,72 @@ import zlib
 import uuid
 import os
 import re
-from datetime import datetime, timezone
+import secrets
+import tempfile
+from datetime import datetime, timezone, timedelta
 from typing import Dict, Any, Optional
 from urllib.parse import unquote
+from pathlib import Path
 
 from fastapi import APIRouter, HTTPException, Request, Response, status, Query, Depends
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 from sqlalchemy import func
 
-from database import get_db, Bucket as DBBucket, Object as DBObject
+from database import get_db, Bucket as DBBucket, Object as DBObject, SignedUrlSession
 
 router = APIRouter()
 
 STORAGE_DIR = "/tmp/gcs-storage"
+
+
+def sanitize_object_name(name: str) -> str:
+    """
+    Sanitize object name to prevent path traversal attacks.
+    Removes dangerous sequences like ../, ~, and absolute paths.
+    """
+    if not name:
+        raise HTTPException(status_code=400, detail="Object name cannot be empty")
+    
+    # Remove leading/trailing slashes
+    name = name.strip('/')
+    
+    # Replace dangerous sequences
+    name = name.replace('..', '')
+    name = name.replace('~', '')
+    
+    # Remove null bytes
+    name = name.replace('\x00', '')
+    
+    # Ensure name doesn't start with special characters
+    if name.startswith(('.', '/')):
+        raise HTTPException(status_code=400, detail="Invalid object name")
+    
+    return name
+
+
+def validate_object_path(bucket: str, object_name: str) -> Path:
+    """
+    Validate that the resulting file path is within the bucket directory.
+    Prevents path traversal attacks.
+    """
+    base_path = Path(STORAGE_DIR) / bucket
+    file_path = base_path / object_name
+    
+    try:
+        # Resolve to absolute path and check if it's within base_path
+        resolved = file_path.resolve()
+        base_resolved = base_path.resolve()
+        
+        if not str(resolved).startswith(str(base_resolved)):
+            raise HTTPException(
+                status_code=400,
+                detail="Invalid object name: path traversal detected"
+            )
+        
+        return file_path
+    except (ValueError, OSError) as e:
+        raise HTTPException(status_code=400, detail=f"Invalid path: {e}")
 
 
 @router.get("/dashboard/stats")
@@ -417,24 +469,86 @@ def list_objects(bucket: str, prefix: Optional[str] = None, db: Session = Depend
     return {"kind": "storage#objects", "items": items}
 
 
+@router.get("/storage/v1/b/{bucket}/o/{object_name:path}/versions")
+def list_object_versions(
+    bucket: str,
+    object_name: str,
+    db: Session = Depends(get_db)
+):
+    """List all versions of an object"""
+    # Query all versions of the object
+    objects = db.query(DBObject).filter(
+        DBObject.bucket_id == bucket,
+        DBObject.name == object_name
+    ).order_by(DBObject.generation.desc()).all()
+    
+    if not objects:
+        raise HTTPException(status_code=404, detail="No versions found for object")
+    
+    # Build response items
+    items = []
+    for obj in objects:
+        items.append({
+            "kind": "storage#object",
+            "id": obj.id,
+            "name": obj.name,
+            "bucket": obj.bucket_id,
+            "generation": str(obj.generation),
+            "metageneration": str(obj.metageneration),
+            "contentType": obj.content_type,
+            "size": str(obj.size),
+            "md5Hash": obj.md5_hash,
+            "crc32c": obj.crc32c_hash,
+            "timeCreated": obj.created_at.isoformat() + "Z",
+            "updated": obj.updated_at.isoformat() + "Z",
+            "mediaLink": f"http://localhost:8080/storage/v1/b/{bucket}/o/{obj.name}?generation={obj.generation}&alt=media",
+            "isLatest": obj.is_latest,
+            "deleted": obj.deleted
+        })
+    
+    return {
+        "kind": "storage#objectVersions",
+        "items": items
+    }
+
+
 @router.get("/storage/v1/b/{bucket}/o/{object:path}")
 @router.get("/download/storage/v1/b/{bucket}/o/{object:path}")
-def get_object(bucket: str, object: str, alt: Optional[str] = Query(None), db: Session = Depends(get_db)):
+def get_object(
+    bucket: str, 
+    object: str, 
+    alt: Optional[str] = Query(None),
+    generation: Optional[int] = Query(None, description="Specific version to retrieve"),
+    db: Session = Depends(get_db)
+):
+    """Get object metadata or download file. Supports specific version via generation parameter."""
     # Validate bucket exists
     _get_bucket_or_404(bucket, db)
     
     raw_name = unquote(object)
-    db_obj = db.query(DBObject).filter(
+    
+    # Query with optional generation filter
+    query = db.query(DBObject).filter(
         DBObject.bucket_id == bucket,
         ((DBObject.name == object) | (DBObject.name == raw_name)),
         DBObject.deleted == False
-    ).first()
+    )
+    
+    if generation is not None:
+        # Get specific version
+        query = query.filter(DBObject.generation == generation)
+        db_obj = query.first()
+    else:
+        # Get latest version
+        query = query.filter(DBObject.is_latest == True)
+        db_obj = query.first()
     
     if not db_obj:
         raise HTTPException(status_code=404, detail="Object not found")
     
     if alt == "media":
-        file_path = f"{STORAGE_DIR}/{bucket}/{db_obj.name}"
+        # Use the versioned file path from database
+        file_path = db_obj.file_path
         if os.path.exists(file_path):
             with open(file_path, "rb") as f:
                 file_content = f.read()
@@ -534,6 +648,9 @@ async def upload_object(bucket: str, request: Request, name: Optional[str] = Que
     if not object_name:
         raise HTTPException(status_code=400, detail="Object name required")
     
+    # SECURITY: Sanitize object name to prevent path traversal
+    object_name = sanitize_object_name(object_name)
+    
     content = raw_body
     if b'"name"' in raw_body and raw_body.startswith(b'--'):
         try:
@@ -548,12 +665,44 @@ async def upload_object(bucket: str, request: Request, name: Optional[str] = Que
         except:
             pass
     
-    file_path = f"{STORAGE_DIR}/{bucket}/{object_name}"
-    os.makedirs(os.path.dirname(file_path), exist_ok=True)
-    with open(file_path, "wb") as f:
-        f.write(content)
+    # Determine generation number FIRST (before writing file)
+    existing_obj = db.query(DBObject).filter(
+        DBObject.bucket_id == bucket,
+        DBObject.name == object_name,
+        DBObject.is_latest == True,
+        DBObject.deleted == False
+    ).with_for_update().first()
     
-    with open(file_path, "rb") as f:
+    next_generation = existing_obj.generation + 1 if existing_obj else 1
+    
+    # SECURITY: Validate base file path is within bucket directory
+    base_file_path = validate_object_path(bucket, object_name)
+    
+    # Create versioned file path: bucket/object.txt.v1, bucket/object.txt.v2, etc.
+    file_path_parts = str(base_file_path).rsplit('.', 1)
+    if len(file_path_parts) == 2:
+        versioned_file_path = Path(f"{file_path_parts[0]}.v{next_generation}.{file_path_parts[1]}")
+    else:
+        versioned_file_path = Path(f"{base_file_path}.v{next_generation}")
+    
+    # Create directory if needed
+    os.makedirs(versioned_file_path.parent, exist_ok=True)
+    
+    # SECURITY: Atomic write using temporary file
+    temp_fd, temp_path = tempfile.mkstemp(dir=versioned_file_path.parent, prefix='.tmp_')
+    try:
+        with os.fdopen(temp_fd, 'wb') as f:
+            f.write(content)
+        
+        # Atomically rename temp file to final destination
+        os.replace(temp_path, versioned_file_path)
+    except Exception as e:
+        # Clean up temp file on error
+        if os.path.exists(temp_path):
+            os.remove(temp_path)
+        raise HTTPException(status_code=500, detail=f"Failed to write file: {e}")
+    
+    with open(versioned_file_path, "rb") as f:
         file_content = f.read()
     
     md5_hash, crc32c = _calc_hashes(file_content)
@@ -570,41 +719,49 @@ async def upload_object(bucket: str, request: Request, name: Optional[str] = Que
     
     now = datetime.now(timezone.utc)
     
-    # Check if object exists
-    existing_obj = db.query(DBObject).filter(
-        DBObject.bucket_id == bucket,
-        DBObject.name == object_name,
-        DBObject.deleted == False
-    ).first()
-    
+    # Note: existing_obj was already queried above with locking
     if existing_obj:
-        # Update existing object
-        existing_obj.size = len(file_content)
-        existing_obj.content_type = content_type  # String
-        existing_obj.md5_hash = md5_hash  # String
-        existing_obj.crc32c_hash = crc32c  # String
-        existing_obj.file_path = file_path
-        existing_obj.updated_at = now
-        existing_obj.generation += 1
-        db.commit()
-        db.refresh(existing_obj)
-        db_obj = existing_obj
-    else:
-        # Create new object
+        # Mark old version as not latest
+        existing_obj.is_latest = False
+        
+        # Create new version (new row)
         db_obj = DBObject(
-            id=f"{bucket}/{object_name}",
+            id=f"{bucket}/{object_name}/generation/{existing_obj.generation + 1}",
             bucket_id=bucket,
             name=object_name,
             size=len(file_content),
             content_type=content_type,  # String
             md5_hash=md5_hash,  # String
             crc32c_hash=crc32c,  # String
-            file_path=file_path,
+            file_path=str(versioned_file_path),  # Versioned file path
+            generation=existing_obj.generation + 1,
+            metageneration=1,
+            time_created=now,
+            created_at=now,
+            updated_at=now,
+            is_latest=True,
+            deleted=False
+        )
+        db.add(db_obj)
+        db.commit()
+        db.refresh(db_obj)
+    else:
+        # Create new object (first version)
+        db_obj = DBObject(
+            id=f"{bucket}/{object_name}/generation/1",
+            bucket_id=bucket,
+            name=object_name,
+            size=len(file_content),
+            content_type=content_type,  # String
+            md5_hash=md5_hash,  # String
+            crc32c_hash=crc32c,  # String
+            file_path=str(versioned_file_path),  # Versioned file path
             generation=1,
             metageneration=1,
             time_created=now,
             created_at=now,
             updated_at=now,
+            is_latest=True,
             deleted=False
         )
         db.add(db_obj)
@@ -698,3 +855,285 @@ def rewrite_object(src_bucket: str, src_obj: str, dst_bucket: str, dst_obj: str,
             "crc32c": dst_db_obj.crc32c_hash,
         },
     }
+
+
+# ============================================================================
+# SIGNED URL ENDPOINTS
+# ============================================================================
+
+@router.post("/storage/v1/b/{bucket}/o/{object:path}/signedUrl")
+def generate_signed_url(
+    bucket: str,
+    object: str,
+    payload: Dict[str, Any],
+    project: Optional[str] = Query(None),
+    db: Session = Depends(get_db)
+) -> Dict[str, str]:
+    """
+    Generate a temporary signed URL for secure object access.
+    
+    Request body:
+    {
+        "method": "GET",      # HTTP method (GET or PUT)
+        "expiresIn": 3600     # Expiration in seconds (default: 1 hour)
+    }
+    
+    Returns:
+    {
+        "signedUrl": "http://localhost:8080/signed/{token}",
+        "expiresAt": "2026-02-06T12:00:00Z"
+    }
+    """
+    # Validate bucket exists
+    _get_bucket_or_404(bucket, db)
+    
+    # Decode and validate object exists
+    object_name = unquote(object)
+    object_name = sanitize_object_name(object_name)
+    
+    db_obj = db.query(DBObject).filter(
+        DBObject.bucket_id == bucket,
+        ((DBObject.name == object) | (DBObject.name == object_name)),
+        DBObject.deleted == False
+    ).first()
+    
+    if not db_obj:
+        raise HTTPException(status_code=404, detail=f"Object '{object_name}' not found in bucket '{bucket}'")
+    
+    # Generate cryptographically secure token
+    token = secrets.token_urlsafe(32)  # 256 bits of entropy
+    
+    # Calculate expiration time
+    expires_in = payload.get("expiresIn", 3600)
+    if expires_in > 604800:  # 7 days max (GCS limit)
+        raise HTTPException(status_code=400, detail="expiresIn cannot exceed 604800 seconds (7 days)")
+    if expires_in < 1:
+        raise HTTPException(status_code=400, detail="expiresIn must be at least 1 second")
+    
+    expires_at = datetime.now(timezone.utc) + timedelta(seconds=expires_in)
+    
+    # Create session record
+    session = SignedUrlSession(
+        id=token,
+        bucket=bucket,
+        object_name=db_obj.name,  # Use canonical name from database
+        method=payload.get("method", "GET").upper(),
+        expires_at=expires_at,
+        created_at=datetime.now(timezone.utc)
+    )
+    
+    db.add(session)
+    db.commit()
+    
+    # Build signed URL
+    signed_url = f"http://localhost:8080/signed/{token}"
+    
+    return {
+        "signedUrl": signed_url,
+        "expiresAt": expires_at.isoformat().replace("+00:00", "Z")
+    }
+
+
+@router.get("/signed/{token}")
+def access_signed_url(token: str, db: Session = Depends(get_db)):
+    """
+    Access object via signed URL token.
+    
+    URL format: http://localhost:8080/signed/{token}
+    
+    Validates:
+    - Token exists
+    - Token has not expired
+    - Object still exists
+    
+    Returns object content with appropriate headers.
+    """
+    # Opportunistic cleanup of expired sessions (every ~100th request)
+    import random
+    if random.randint(1, 100) == 1:
+        expired_count = db.query(SignedUrlSession).filter(
+            SignedUrlSession.expires_at < datetime.now(timezone.utc)
+        ).delete()
+        if expired_count > 0:
+            db.commit()
+    
+    # Look up session
+    session = db.query(SignedUrlSession).filter(
+        SignedUrlSession.id == token
+    ).first()
+    
+    if not session:
+        raise HTTPException(
+            status_code=404,
+            detail="Signed URL not found. The URL may be invalid or has already expired."
+        )
+    
+    # Check expiration (ensure both times are timezone-aware)
+    now = datetime.now(timezone.utc)
+    expires_at = session.expires_at
+    if expires_at.tzinfo is None:
+        expires_at = expires_at.replace(tzinfo=timezone.utc)
+    
+    if now > expires_at:
+        # Delete expired session
+        db.delete(session)
+        db.commit()
+        raise HTTPException(
+            status_code=403,
+            detail=f"Signed URL has expired. Expired at: {expires_at.isoformat()}"
+        )
+    
+    # Increment access count
+    session.access_count += 1
+    db.commit()
+    
+    # Fetch object from database
+    db_obj = db.query(DBObject).filter(
+        DBObject.bucket_id == session.bucket,
+        DBObject.name == session.object_name,
+        DBObject.deleted == False
+    ).first()
+    
+    if not db_obj:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Object '{session.object_name}' no longer exists in bucket '{session.bucket}'"
+        )
+    
+    # Read file from filesystem
+    file_path = validate_object_path(session.bucket, db_obj.name)
+    if not file_path.exists():
+        raise HTTPException(
+            status_code=500,
+            detail="Object file not found on disk. Storage may be corrupted."
+        )
+    
+    with open(file_path, "rb") as f:
+        file_content = f.read()
+    
+    # Ensure all values are strings (not bytes)
+    content_type = str(db_obj.content_type or "application/octet-stream")
+    md5_hash = str(db_obj.md5_hash or "")
+    crc32c_hash = str(db_obj.crc32c_hash or "")
+    
+    # Calculate time remaining (use the timezone-aware expires_at from above)
+    time_remaining = (expires_at - now).total_seconds()
+    
+    # Return object with GCS-compatible headers
+    return Response(
+        content=file_content,
+        media_type=content_type,
+        headers={
+            "Content-Length": str(len(file_content)),
+            "Content-Disposition": f'attachment; filename="{db_obj.name}"',
+            "x-goog-hash": f"crc32c={crc32c_hash},md5={md5_hash}",
+            "x-goog-generation": str(db_obj.generation),
+            "x-goog-metageneration": str(db_obj.metageneration),
+            "Cache-Control": f"private, max-age={int(time_remaining)}",
+            "ETag": f'"{md5_hash}"'
+        }
+    )
+
+
+# ============================================================================
+# ACL (Access Control List) ENDPOINTS
+# ============================================================================
+
+@router.get("/storage/v1/b/{bucket}/o/{object:path}/acl")
+def get_object_acl(bucket: str, object: str, db: Session = Depends(get_db)) -> Dict[str, Any]:
+    """Get object ACL"""
+    _get_bucket_or_404(bucket, db)
+    
+    object_name = unquote(object)
+    db_obj = db.query(DBObject).filter(
+        DBObject.bucket_id == bucket,
+        ((DBObject.name == object) | (DBObject.name == object_name)),
+        DBObject.deleted == False
+    ).first()
+    
+    if not db_obj:
+        raise HTTPException(status_code=404, detail="Object not found")
+    
+    # Return current ACL or default
+    acl_value = db_obj.acl or "private"
+    
+    return {
+        "kind": "storage#objectAccessControl",
+        "acl": acl_value
+    }
+
+
+@router.patch("/storage/v1/b/{bucket}/o/{object:path}/acl")
+def update_object_acl(
+    bucket: str,
+    object: str,
+    payload: Dict[str, Any],
+    db: Session = Depends(get_db)
+) -> Dict[str, Any]:
+    """Update object ACL"""
+    _get_bucket_or_404(bucket, db)
+    
+    object_name = unquote(object)
+    db_obj = db.query(DBObject).filter(
+        DBObject.bucket_id == bucket,
+        ((DBObject.name == object) | (DBObject.name == object_name)),
+        DBObject.deleted == False
+    ).with_for_update().first()
+    
+    if not db_obj:
+        raise HTTPException(status_code=404, detail="Object not found")
+    
+    # Update ACL
+    new_acl = payload.get("acl")
+    if new_acl:
+        # Validate ACL value
+        valid_acls = ["private", "public-read", "public-read-write", "authenticated-read"]
+        if new_acl not in valid_acls:
+            raise HTTPException(status_code=400, detail=f"Invalid ACL value. Must be one of: {valid_acls}")
+        
+        db_obj.acl = new_acl
+        db.commit()
+        db.refresh(db_obj)
+    
+    return {
+        "kind": "storage#objectAccessControl",
+        "acl": db_obj.acl
+    }
+
+
+@router.get("/storage/v1/b/{bucket}/defaultObjectAcl")
+def get_bucket_default_acl(bucket: str, db: Session = Depends(get_db)) -> Dict[str, Any]:
+    """Get bucket default object ACL"""
+    db_bucket = _get_bucket_or_404(bucket, db)
+    
+    acl_value = db_bucket.acl or "private"
+    
+    return {
+        "kind": "storage#bucketAccessControl",
+        "acl": acl_value
+    }
+
+
+@router.patch("/storage/v1/b/{bucket}/defaultObjectAcl")
+def update_bucket_default_acl(
+    bucket: str,
+    payload: Dict[str, Any],
+    db: Session = Depends(get_db)
+) -> Dict[str, Any]:
+    """Update bucket default object ACL"""
+    db_bucket = _get_bucket_or_404(bucket, db)
+    
+    new_acl = payload.get("acl")
+    if new_acl:
+        valid_acls = ["private", "public-read", "public-read-write", "authenticated-read"]
+        if new_acl not in valid_acls:
+            raise HTTPException(status_code=400, detail=f"Invalid ACL value. Must be one of: {valid_acls}")
+        
+        db_bucket.acl = new_acl
+        db.commit()
+    
+    return {
+        "kind": "storage#bucketAccessControl",
+        "acl": db_bucket.acl
+    }
+

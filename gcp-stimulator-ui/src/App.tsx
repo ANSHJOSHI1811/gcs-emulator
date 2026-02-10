@@ -20,6 +20,7 @@ import NetworksPage from './pages/NetworksPage';
 import SubnetsPage from './pages/SubnetsPage';
 import FirewallsPage from './pages/FirewallsPage';
 import RoutesPage from './pages/RoutesPage';
+import RouteTablesPage from './pages/RouteTablesPage';
 
 function App() {
   return (
@@ -57,12 +58,15 @@ function App() {
 
             {/* VPC Network Service Routes */}
             <Route path="/services/vpc">
-              <Route index element={<Navigate to="/services/vpc/networks" replace />} />
-              <Route path="networks" element={<NetworksPage />} />
+              <Route index element={<VPCDashboardPage />} />
               <Route path="subnets" element={<SubnetsPage />} />
               <Route path="firewalls" element={<FirewallsPage />} />
               <Route path="routes" element={<RoutesPage />} />
+              <Route path="route-tables" element={<RouteTablesPage />} />
             </Route>
+            
+            {/* Legacy VPC route redirect */}
+            <Route path="/services/vpc/networks" element={<Navigate to="/services/vpc" replace />} />
 
             {/* Legacy Routes - Redirect to new structure */}
             <Route path="/buckets" element={<Navigate to="/services/storage/buckets" replace />} />

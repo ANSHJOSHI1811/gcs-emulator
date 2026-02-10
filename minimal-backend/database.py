@@ -114,6 +114,64 @@ class Firewall(Base):
     created_at = Column(DateTime, default=datetime.utcnow)
 
 
+class Route(Base):
+    """VPC Route"""
+    __tablename__ = "routes"
+    
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    name = Column(String, nullable=False)
+    network = Column(String, nullable=False)  # Network reference
+    project_id = Column(String, nullable=False)
+    description = Column(String)
+    dest_range = Column(String, nullable=False)  # Destination IP range
+    next_hop_gateway = Column(String)  # e.g., "default-internet-gateway"
+    next_hop_instance = Column(String)  # Instance name
+    next_hop_ip = Column(String)  # IP address
+    next_hop_network = Column(String)  # Network reference
+    priority = Column(Integer, default=1000)
+    tags = Column(JSON)  # List of instance tags
+    route_table_id = Column(Integer)  # Reference to route table (nullable for backward compat)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+
+class RouteTable(Base):
+    """Route Table for managing routes"""
+    __tablename__ = "route_tables"
+    
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    name = Column(String, nullable=False)
+    project_id = Column(String, nullable=False)
+    network = Column(String, nullable=False)  # Network reference
+    description = Column(String)
+    is_default = Column(Boolean, default=False)  # Auto-created default table
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
+class SubnetRouteTableAssociation(Base):
+    """Association between subnet and route table"""
+    __tablename__ = "subnet_route_table_associations"
+    
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    subnet_name = Column(String, nullable=False)
+    route_table_id = Column(Integer, nullable=False)
+    project_id = Column(String, nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+
+class SignedUrlSession(Base):
+    """Signed URL session for temporary object access"""
+    __tablename__ = "signed_url_sessions"
+    
+    id = Column(String, primary_key=True)  # Random token
+    bucket = Column(String, nullable=False)
+    object_name = Column(String, nullable=False)
+    method = Column(String, default="GET")
+    expires_at = Column(DateTime, nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    access_count = Column(Integer, default=0)
+
+
 class Bucket(Base):
     """Cloud Storage Bucket"""
     __tablename__ = "buckets"
@@ -172,8 +230,8 @@ class ServiceAccount(Base):
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
 
-# Don't create tables - they already exist in RDS
-# Base.metadata.create_all(engine)
+# Create any missing tables (new models)
+Base.metadata.create_all(engine)
 
 def get_db():
     """Database session"""

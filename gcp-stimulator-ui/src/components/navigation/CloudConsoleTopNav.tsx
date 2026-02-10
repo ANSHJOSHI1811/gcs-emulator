@@ -1,5 +1,5 @@
 import { useLocation, Link } from 'react-router-dom';
-import { ChevronRight, Home, Cloud } from 'lucide-react';
+import { ChevronRight, Home, Cloud, Search } from 'lucide-react';
 import ServicesMegaMenu from '../navigation/ServicesMegaMenu';
 import ProjectSelector from '../ProjectSelector';
 import { getServiceById } from '../../config/serviceCatalog';
@@ -58,52 +58,57 @@ const CloudConsoleTopNav = () => {
   const breadcrumbs = getBreadcrumbs();
 
   return (
-    <header className="h-16 bg-white border-b border-gray-200 px-6 flex items-center justify-between">
-      <div className="flex items-center gap-4">
-        <Link to="/" className="flex items-center gap-2 mr-2">
-          <div className="w-8 h-8 bg-blue-600 rounded flex items-center justify-center">
-            <Cloud className="w-5 h-5 text-white" />
-          </div>
-          <span className="font-semibold text-gray-900 hidden sm:inline">
-            Google Cloud Stimulator
-          </span>
-        </Link>
-
-        <ServicesMegaMenu />
-
-        <nav className="flex items-center gap-2 ml-4">
-          {breadcrumbs.map((crumb, index) => (
-            <div key={crumb.path} className="flex items-center gap-2">
-              {index > 0 && (
-                <ChevronRight className="w-4 h-4 text-gray-400" />
-              )}
-              <Link
-                to={crumb.path}
-                className={`text-sm hover:text-blue-600 transition-colors ${
-                  index === breadcrumbs.length - 1
-                    ? 'text-gray-900 font-medium'
-                    : 'text-gray-600'
-                }`}
-              >
-                {crumb.icon && index === 0 && crumb.icon ? (
-                  <crumb.icon className="w-4 h-4" />
-                ) : (
-                  crumb.label
-                )}
-              </Link>
+    <header className="h-16 bg-white border-b border-gray-200">
+      <div className="h-full max-w-full mx-auto px-6 flex items-center justify-between gap-6">
+        {/* Left Section */}
+        <div className="flex items-center gap-6 flex-1 min-w-0">
+          {/* Logo */}
+          <Link to="/" className="flex items-center gap-3 flex-shrink-0 group">
+            <div className="relative">
+              <div className="absolute inset-0 bg-blue-400 rounded-lg blur opacity-25 group-hover:opacity-40 transition-opacity"></div>
+              <div className="relative w-9 h-9 bg-gradient-to-br from-blue-500 to-blue-600 rounded-lg flex items-center justify-center shadow-sm">
+                <Cloud className="w-5 h-5 text-white" strokeWidth={2} />
+              </div>
             </div>
-          ))}
-        </nav>
-      </div>
+            <div className="hidden lg:flex flex-col">
+              <span className="text-[15px] font-semibold text-gray-900 leading-none">Cloud Stimulator</span>
+              <span className="text-[11px] text-gray-500 leading-none mt-0.5">Development Environment</span>
+            </div>
+          </Link>
 
-      <div className="flex items-center gap-3">
-        <ProjectSelector />
-        
-        <div className="text-xs text-gray-500">
-          <span className="inline-flex items-center gap-1.5">
-            <span className="w-2 h-2 bg-green-500 rounded-full"></span>
-            <span className="hidden sm:inline">Connected</span>
-          </span>
+          {/* Services Menu */}
+          <ServicesMegaMenu />
+
+          {/* Breadcrumbs */}
+          <nav className="flex items-center gap-1 min-w-0 overflow-x-auto no-scrollbar md:hidden">
+            {breadcrumbs.map((crumb, index) => (
+              <div key={crumb.path} className="flex items-center gap-1 flex-shrink-0">
+                {index > 0 && (
+                  <ChevronRight className="w-4 h-4 text-gray-400" />
+                )}
+                <Link
+                  to={crumb.path}
+                  className={`text-sm px-2 py-1 rounded hover:bg-gray-100 transition-colors ${
+                    index === breadcrumbs.length - 1
+                      ? 'text-gray-900 font-medium'
+                      : 'text-gray-600'
+                  }`}
+                >
+                  {crumb.icon && index === 0 && crumb.icon ? (
+                    <crumb.icon className="w-4 h-4" />
+                  ) : (
+                    crumb.label
+                  )}
+                </Link>
+              </div>
+            ))}
+          </nav>
+        </div>
+
+        {/* Right Section */}
+        <div className="flex items-center gap-4 flex-shrink-0">
+          {/* Project Selector */}
+          <ProjectSelector />
         </div>
       </div>
     </header>

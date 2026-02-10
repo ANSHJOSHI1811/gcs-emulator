@@ -27,10 +27,12 @@ interface NetworkOption {
 
 const SubnetsPage = () => {
   const { currentProject } = useProject();
-  const [searchParams] = useSearchParams();
+  const [searchParams, setSearchParams] = useSearchParams();
   const networkFilter = searchParams.get('network');
   const [subnets, setSubnets] = useState<Subnet[]>([]);
+  const [allSubnets, setAllSubnets] = useState<Subnet[]>([]);
   const [networks, setNetworks] = useState<NetworkOption[]>([]);
+  const [selectedNetworkFilter, setSelectedNetworkFilter] = useState<string>(networkFilter || '');
   const [loading, setLoading] = useState(true);
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [showDetailsModal, setShowDetailsModal] = useState(false);
@@ -74,23 +76,39 @@ const SubnetsPage = () => {
       setNetworks(networksList as any);
 
       const subnetsList = await listSubnets(currentProject);
-      const allSubnets = subnetsList as any;
+      const fetchedSubnets = subnetsList as any;
+      setAllSubnets(fetchedSubnets);
       
-      if (networkFilter) {
-        const filtered = allSubnets.filter((s: Subnet) => {
-          const subnetNetwork = s.network.split('/').pop();
-          return subnetNetwork === networkFilter;
-        });
-        setSubnets(filtered);
-      } else {
-        setSubnets(allSubnets);
-      }
+      // Apply filter
+      filterSubnets(fetchedSubnets, selectedNetworkFilter);
     } catch (error: any) {
       console.error('Failed to load subnets:', error);
       setError('Failed to load subnets');
     } finally {
       setLoading(false);
     }
+  };
+
+  const filterSubnets = (subnetsToFilter: Subnet[], networkName: string) => {
+    if (networkName) {
+      const filtered = subnetsToFilter.filter((s: Subnet) => {
+        const subnetNetwork = s.network.split('/').pop();
+        return subnetNetwork === networkName;
+      });
+      setSubnets(filtered);
+    } else {
+      setSubnets(subnetsToFilter);
+    }
+  };
+
+  const handleNetworkFilterChange = (networkName: string) => {
+    setSelectedNetworkFilter(networkName);
+    if (networkName) {
+      setSearchParams({ network: networkName });
+    } else {
+      setSearchParams({});
+    }
+    filterSubnets(allSubnets, networkName);
   };
 
   const handleCreate = async (e: React.FormEvent) => {
@@ -181,16 +199,13 @@ const SubnetsPage = () => {
       <div className="bg-white border-b border-gray-200">
         <div className="max-w-[1280px] mx-auto px-8 py-6">
           <div className="flex items-center justify-between mb-4">
-            <div>
+            <div className="flex-1">
               <div className="flex items-start gap-4 mb-2">
                 <div className="p-3 bg-blue-50 rounded-xl">
                   <Globe className="w-8 h-8 text-blue-600" />
                 </div>
                 <div className="flex-1">
-                  <h1 className="text-[28px] font-bold text-gray-900 mb-2">
-                    Subnets
-                    {networkFilter && <span className="text-blue-600 ml-2">• {networkFilter}</span>}
-                  </h1>
+                  <h1 className="text-[28px] font-bold text-gray-900 mb-2">Subnets</h1>
                   <p className="text-[14px] text-gray-600 leading-relaxed">
                     Manage subnets within your VPC networks across different regions.
                   </p>
@@ -244,7 +259,21 @@ const SubnetsPage = () => {
       <div className="max-w-[1280px] mx-auto px-8 py-8">
         {/* Subnets List */}
         <div className="mb-8">
-          <h2 className="text-[16px] font-bold text-gray-900 mb-4">Subnets</h2>
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="text-[16px] font-bold text-gray-900">Subnets</h2>
+            <select
+              value={selectedNetworkFilter}
+              onChange={(e) => handleNetworkFilterChange(e.target.value)}
+              className="px-3 py-2 text-[13px] border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white"
+            >
+              <option value="">All VPC Networks</option>
+              {networks.map((network) => (
+                <option key={network.name} value={network.name}>
+                  {network.name}
+                </option>
+              ))}
+            </select>
+          </div>
           <div className="bg-white rounded-lg border border-gray-200 shadow-[0_1px_3px_rgba(0,0,0,0.07)]">
             {subnets.length > 0 ? (
               <div className="divide-y divide-gray-200">

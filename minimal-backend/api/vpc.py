@@ -1,13 +1,124 @@
 """VPC Network API - Network Management"""
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
-from database import get_db, Network, Instance, Subnet
+from database import get_db, Network, Instance, Subnet, Route
 import docker
 import uuid
 import random
+import ipaddress
 
 router = APIRouter()
 client = docker.from_env()
+
+
+def create_default_internet_gateway_route(db: Session, project: str, network_name: str):
+    """Create default route to Internet Gateway (0.0.0.0/0 -> default-internet-gateway)
+    
+    This mimics GCP's automatic creation of a default route for Internet access.
+    Every VPC automatically gets this route unless explicitly deleted.
+    """
+    route_name = f"default-route-{network_name}"
+    
+    # Check if route already exists
+    existing = db.query(Route).filter_by(
+        project_id=project,
+        name=route_name
+    ).first()
+    
+    if existing:
+        print(f"ℹ️  Default internet gateway route already exists for {network_name}")
+        return existing
+    
+    # Create the default route
+    route = Route(
+        name=route_name,
+        network=network_name,
+        project_id=project,
+        description=f"Default route to Internet Gateway for {network_name}",
+        dest_range="0.0.0.0/0",
+        next_hop_gateway=f"projects/{project}/global/gateways/default-internet-gateway",
+        priority=1000
+    )
+    
+    db.add(route)
+    db.commit()
+    db.refresh(route)
+    
+    print(f"✅ Created default Internet Gateway route for network {network_name}: 0.0.0.0/0 -> default-internet-gateway")
+    return route
+
+
+def create_subnet_route(db: Session, project: str, network_name: str, subnet_name: str, subnet_cidr: str):
+    """Create automatic route for subnet (local route within VPC)
+    
+    GCP automatically creates a route for each subnet so traffic within
+    the subnet CIDR is routed locally within the VPC.
+    """
+    route_name = f"route-{subnet_name}"
+    
+    # Check if route already exists
+    existing = db.query(Route).filter_by(
+        project_id=project,
+        name=route_name
+    ).first()
+    
+    if existing:
+        print(f"ℹ️  Subnet route already exists for {subnet_name}")
+        return existing
+    
+    # Create subnet route
+    route = Route(
+        name=route_name,
+        network=network_name,
+        project_id=project,
+        description=f"Automatic route for subnet {subnet_name}",
+        dest_range=subnet_cidr,
+        next_hop_network=f"projects/{project}/global/networks/{network_name}",
+        priority=1000
+    )
+    
+    db.add(route)
+    db.commit()
+    db.refresh(route)
+    
+    print(f"✅ Created subnet route for {subnet_name}: {subnet_cidr} -> {network_name}")
+    return route
+
+
+def validate_subnet_in_network(subnet_cidr: str, network_cidr: str) -> bool:
+    """
+    Validate that a subnet CIDR is within the network CIDR range.
+    Returns True if valid, False otherwise.
+    """
+    try:
+        subnet = ipaddress.ip_network(subnet_cidr, strict=False)
+        network = ipaddress.ip_network(network_cidr, strict=False)
+        return subnet.subnet_of(network)
+    except ValueError:
+        return False
+
+
+def validate_no_subnet_overlap(db: Session, network_name: str, new_subnet_cidr: str, project_id: str) -> bool:
+    """
+    Check that the new subnet doesn't overlap with existing subnets in the same network.
+    Returns True if no overlap, raises HTTPException if overlap detected.
+    """
+    existing_subnets = db.query(Subnet).filter(
+        Subnet.network == network_name
+    ).all()
+    
+    new_subnet = ipaddress.ip_network(new_subnet_cidr, strict=False)
+    
+    for existing in existing_subnets:
+        existing_net = ipaddress.ip_network(existing.ip_cidr_range, strict=False)
+        if new_subnet.overlaps(existing_net):
+            raise HTTPException(
+                status_code=400,
+                detail=f"Subnet {new_subnet_cidr} overlaps with existing subnet {existing.name} ({existing.ip_cidr_range})"
+            )
+    
+    return True
+
 
 def ensure_default_network(db: Session, project: str):
     """Ensure default network exists for project"""
@@ -24,6 +135,9 @@ def ensure_default_network(db: Session, project: str):
         db.commit()
         db.refresh(default)
         print(f"✅ Created default network for project {project} (ID: {default.id})")
+        
+        # Create default Internet Gateway route
+        create_default_internet_gateway_route(db, project, "default")
     return default
 
 @router.get("/projects/{project}/global/networks")
@@ -86,11 +200,16 @@ def create_network(project: str, body: dict, db: Session = Depends(get_db)):
     name = body["name"]
     auto_create = body.get("autoCreateSubnetworks", True)
     
-    # Auto-mode uses 10.128.0.0/9, custom mode uses provided CIDR
+    # For auto-mode, use standard GCP CIDR; for custom mode, use provided CIDR
+    # NOTE: VPC CIDR = Docker network CIDR (single unified range)
+    # Subnets are virtual overlays validated to be within this range
     if auto_create:
-        cidr = "10.128.0.0/9"  # Fixed CIDR for auto-mode
+        # Auto-mode: Use 10.128.0.0/9 for both VPC and Docker
+        cidr = "10.128.0.0/9"
+        docker_cidr = cidr  # Same CIDR for Docker network
     else:
         cidr = body.get("IPv4Range", "10.128.0.0/16")
+        docker_cidr = cidr  # Custom mode: use same CIDR
     
     # Validate CIDR
     if not validate_cidr(cidr):
@@ -100,13 +219,6 @@ def create_network(project: str, body: dict, db: Session = Depends(get_db)):
     existing = db.query(Network).filter_by(project_id=project, name=name).first()
     if existing:
         raise HTTPException(status_code=409, detail=f"Network {name} already exists")
-    
-    # Create Docker network with custom CIDR
-    # For auto-mode, use a unique Docker network CIDR
-    if auto_create:
-        docker_cidr = f"172.{16 + hash(project + name) % 16}.0.0/16"  # Unique per VPC
-    else:
-        docker_cidr = cidr
     
     docker_network_name = f"gcp-vpc-{project}-{name}"
     print(f"Creating Docker network: {docker_network_name} with CIDR {docker_cidr}")
@@ -131,6 +243,9 @@ def create_network(project: str, body: dict, db: Session = Depends(get_db)):
     
     print(f"✅ Created VPC network {name} (ID: {network.id}) with Docker network {docker_network_name}")
     
+    # Create default Internet Gateway route (0.0.0.0/0 -> default-internet-gateway)
+    create_default_internet_gateway_route(db, project, name)
+    
     # Auto-create subnets if auto-mode is enabled
     if auto_create and is_auto_mode_cidr(cidr):
         print(f"Auto-mode enabled, creating subnets for all regions...")
@@ -151,6 +266,9 @@ def create_network(project: str, body: dict, db: Session = Depends(get_db)):
                 next_available_ip=2  # Start from .2 (.0=network, .1=gateway)
             )
             db.add(subnet)
+            
+            # Create subnet route
+            create_subnet_route(db, project, name, subnet_name, subnet_cidr)
         
         db.commit()
         print(f"✅ Auto-created {len(regions_data)} subnets for {name}")
@@ -205,6 +323,18 @@ def delete_network(project: str, network_name: str, db: Session = Depends(get_db
         except Exception as e:
             print(f"Warning: Failed to delete Docker network: {e}")
     
+    # Delete associated routes
+    routes = db.query(Route).filter_by(project_id=project, network=network_name).all()
+    for route in routes:
+        db.delete(route)
+    print(f"✅ Deleted {len(routes)} routes associated with network {network_name}")
+    
+    # Delete associated subnets
+    subnets = db.query(Subnet).filter_by(network=network_name).all()
+    for subnet in subnets:
+        db.delete(subnet)
+    print(f"✅ Deleted {len(subnets)} subnets associated with network {network_name}")
+    
     db.delete(network)
     db.commit()
     
@@ -249,12 +379,12 @@ def create_subnet(project: str, region: str, body: dict, db: Session = Depends(g
     if not network:
         raise HTTPException(status_code=404, detail=f"Network {network_name} not found")
     
-    # Validate subnet is within VPC CIDR
+    # Validate subnet is within VPC CIDR (VPC CIDR = Docker network CIDR)
     vpc_cidr = network.cidr_range if hasattr(network, 'cidr_range') and network.cidr_range else "10.128.0.0/16"
-    if not subnet_within_vpc(vpc_cidr, cidr):
+    if not validate_subnet_in_network(cidr, vpc_cidr):
         raise HTTPException(
             status_code=400,
-            detail=f"Subnet {cidr} is not within VPC range {vpc_cidr}"
+            detail=f"Subnet {cidr} is not within VPC network range {vpc_cidr}"
         )
     
     # Check for existing subnet with same name
@@ -262,26 +392,11 @@ def create_subnet(project: str, region: str, body: dict, db: Session = Depends(g
     if existing:
         raise HTTPException(status_code=409, detail=f"Subnet {name} already exists in {region}")
     
-    # Check for overlapping subnets
-    existing_subnets = db.query(Subnet).filter_by(network=network_name).all()
-    import ipaddress
-    for existing in existing_subnets:
-        # Check if ranges overlap
-        try:
-            new_net = ipaddress.ip_network(cidr, strict=False)
-            exist_net = ipaddress.ip_network(existing.ip_cidr_range, strict=False)
-            if new_net.overlaps(exist_net):
-                raise HTTPException(
-                    status_code=400,
-                    detail=f"Subnet {cidr} overlaps with existing subnet {existing.name} ({existing.ip_cidr_range})"
-                )
-        except HTTPException:
-            # Re-raise HTTPException (don't swallow validation errors!)
-            raise
-        except Exception as e:
-            # Log but continue if there's a parsing error
-            print(f"Warning: Could not validate overlap for {existing.name}: {e}")
-            pass
+    # Check for overlapping subnets in the same network
+    validate_no_subnet_overlap(db, network_name, cidr, project)
+    
+    # Check for overlapping subnets in the same network
+    validate_no_subnet_overlap(db, network_name, cidr, project)
     
     # Calculate gateway IP
     gateway = get_gateway_ip(cidr)
@@ -300,6 +415,9 @@ def create_subnet(project: str, region: str, body: dict, db: Session = Depends(g
     db.refresh(subnet)
     
     print(f"✅ Created subnet {name} in {network_name}: {cidr}, gateway {gateway}")
+    
+    # Create automatic subnet route
+    create_subnet_route(db, project, network_name, name, cidr)
     
     operation_id = str(random.randint(1000000000000, 9999999999999))
     return {

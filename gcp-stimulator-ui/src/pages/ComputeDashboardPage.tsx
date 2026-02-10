@@ -29,6 +29,7 @@ const ComputeDashboardPage = () => {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [actionLoading, setActionLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [statusFilter, setStatusFilter] = useState<'all' | 'running' | 'stopped'>('all');
   const { currentProject } = useProject();
 
   const extractName = (url: string) => url?.split('/').pop() || '-';
@@ -98,6 +99,12 @@ const ComputeDashboardPage = () => {
   const runningCount = instances.filter(i => i.status === 'RUNNING').length;
   const stoppedCount = instances.filter(i => i.status === 'TERMINATED' || i.status === 'STOPPED').length;
 
+  const filteredInstances = instances.filter(instance => {
+    if (statusFilter === 'running') return instance.status === 'RUNNING';
+    if (statusFilter === 'stopped') return instance.status === 'TERMINATED' || instance.status === 'STOPPED';
+    return true; // 'all'
+  });
+
   if (loading) {
     return (
       <div className="flex items-center justify-center h-screen bg-[#f8f9fa]">
@@ -139,24 +146,45 @@ const ComputeDashboardPage = () => {
 
           {/* Quick Stats */}
           <div className="flex items-center gap-6 pt-4 border-t border-gray-200">
-            <div className="flex items-center gap-2 px-3 py-2">
+            <button
+              onClick={() => setStatusFilter('all')}
+              className={`flex items-center gap-2 px-3 py-2 rounded-lg transition-all cursor-pointer ${
+                statusFilter === 'all' ? 'bg-blue-50' : 'hover:bg-gray-50'
+              }`}
+            >
               <div className="w-2 h-2 bg-blue-500 rounded-full"></div>
               <span className="text-[13px] text-gray-600">
-                <span className="font-semibold text-gray-900">{instances.length}</span> Instances
+                <span className={`font-semibold ${
+                  statusFilter === 'all' ? 'text-blue-600' : 'text-gray-900'
+                }`}>{instances.length}</span> Instances
               </span>
-            </div>
-            <div className="flex items-center gap-2 px-3 py-2">
+            </button>
+            <button
+              onClick={() => setStatusFilter('running')}
+              className={`flex items-center gap-2 px-3 py-2 rounded-lg transition-all cursor-pointer ${
+                statusFilter === 'running' ? 'bg-green-50' : 'hover:bg-gray-50'
+              }`}
+            >
               <div className="w-2 h-2 bg-green-500 rounded-full"></div>
               <span className="text-[13px] text-gray-600">
-                <span className="font-semibold text-gray-900">{runningCount}</span> Running
+                <span className={`font-semibold ${
+                  statusFilter === 'running' ? 'text-green-600' : 'text-gray-900'
+                }`}>{runningCount}</span> Running
               </span>
-            </div>
-            <div className="flex items-center gap-2 px-3 py-2">
+            </button>
+            <button
+              onClick={() => setStatusFilter('stopped')}
+              className={`flex items-center gap-2 px-3 py-2 rounded-lg transition-all cursor-pointer ${
+                statusFilter === 'stopped' ? 'bg-gray-100' : 'hover:bg-gray-50'
+              }`}
+            >
               <div className="w-2 h-2 bg-gray-500 rounded-full"></div>
               <span className="text-[13px] text-gray-600">
-                <span className="font-semibold text-gray-900">{stoppedCount}</span> Stopped
+                <span className={`font-semibold ${
+                  statusFilter === 'stopped' ? 'text-gray-900' : 'text-gray-900'
+                }`}>{stoppedCount}</span> Stopped
               </span>
-            </div>
+            </button>
           </div>
         </div>
       </div>
@@ -165,11 +193,21 @@ const ComputeDashboardPage = () => {
       <div className="max-w-[1280px] mx-auto px-8 py-8">
         {/* Instances List */}
         <div className="mb-8">
-          <h2 className="text-[16px] font-bold text-gray-900 mb-4">VM Instances</h2>
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="text-[16px] font-bold text-gray-900">VM Instances</h2>
+            {statusFilter !== 'all' && (
+              <button
+                onClick={() => setStatusFilter('all')}
+                className="text-[13px] text-blue-600 hover:text-blue-800 font-medium"
+              >
+                Show all instances
+              </button>
+            )}
+          </div>
           <div className="bg-white rounded-lg border border-gray-200 shadow-[0_1px_3px_rgba(0,0,0,0.07)]">
-            {instances.length > 0 ? (
+            {filteredInstances.length > 0 ? (
               <div className="divide-y divide-gray-200">
-                {instances.map((instance) => (
+                {filteredInstances.map((instance) => (
                   <div
                     key={instance.id}
                     className="flex items-center justify-between p-4 hover:bg-gray-50 transition-colors group"

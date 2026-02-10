@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useProject } from '../contexts/ProjectContext';
-import { Network, Globe, Plus, Trash2, Activity, ArrowRight, Info, BarChart3 } from 'lucide-react';
+import { Network, Globe, Plus, Trash2, Activity, ArrowRight, Info, BarChart3, Route } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { apiClient } from '../api/client';
 import { Modal } from '../components/Modal';
@@ -220,6 +220,16 @@ const VPCDashboardPage = () => {
               </span>
               <ArrowRight className="w-3 h-3 text-gray-400 group-hover:text-blue-600" />
             </Link>
+            <Link 
+              to="/services/vpc/route-tables"
+              className="flex items-center gap-2 hover:bg-amber-50 px-3 py-2 rounded-lg transition-colors cursor-pointer group"
+            >
+              <div className="w-2 h-2 bg-amber-500 rounded-full group-hover:scale-125 transition-transform"></div>
+              <span className="text-[13px] text-gray-600">
+                <span className="font-semibold text-gray-900 group-hover:text-amber-600">Route Tables</span>
+              </span>
+              <ArrowRight className="w-3 h-3 text-gray-400 group-hover:text-amber-600" />
+            </Link>
           </div>
         </div>
       </div>
@@ -270,17 +280,15 @@ const VPCDashboardPage = () => {
                         </div>
                       </div>
                     </div>
-                    <div className="flex items-center gap-2">
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          handleNetworkClick(network);
-                        }}
-                        className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg transition-all"
-                        title="View details"
+                    <div className="flex items-center gap-4">
+                      <Link
+                        to={`/services/vpc/subnets?network=${network.name}`}
+                        onClick={(e) => e.stopPropagation()}
+                        className="flex items-center gap-1.5 text-[13px] text-blue-600 hover:text-blue-800 font-medium group/link"
                       >
-                        <Info className="w-4 h-4" />
-                      </button>
+                        <span>Subnets</span>
+                        <ArrowRight className="w-3.5 h-3.5 group-hover/link:translate-x-0.5 transition-transform" />
+                      </Link>
                       {network.name !== 'default' && (
                         <button
                           onClick={(e) => {
@@ -314,6 +322,82 @@ const VPCDashboardPage = () => {
             )}
           </div>
         </div>
+
+        {/* Networking Resources Quick Links */}
+        {networks.length > 0 && (
+          <div className="mt-8">
+            <h2 className="text-[16px] font-bold text-gray-900 mb-4">Networking Resources</h2>
+            <div className="grid grid-cols-2 gap-4">
+              {/* Routes Card */}
+              <Link
+                to="/services/vpc/routes"
+                className="group"
+              >
+                <div className="bg-white rounded-lg border border-gray-200 shadow-[0_1px_3px_rgba(0,0,0,0.07)] hover:shadow-[0_8px_16px_rgba(0,0,0,0.1)] transition-all p-5 h-full hover:border-blue-300 cursor-pointer">
+                  <div className="flex items-center justify-between mb-4">
+                    <div className="p-2.5 bg-blue-50 rounded-lg group-hover:bg-blue-100 transition-colors">
+                      <Route className="w-5 h-5 text-blue-600" />
+                    </div>
+                    <ArrowRight className="w-4 h-4 text-gray-400 group-hover:text-blue-600 group-hover:translate-x-0.5 transition-all" />
+                  </div>
+                  <h3 className="text-[14px] font-semibold text-gray-900 mb-1">Routes</h3>
+                  <p className="text-[12px] text-gray-500">Manage traffic routing configuration</p>
+                </div>
+              </Link>
+
+              {/* Route Tables Card */}
+              <Link
+                to="/services/vpc/route-tables"
+                className="group"
+              >
+                <div className="bg-white rounded-lg border border-gray-200 shadow-[0_1px_3px_rgba(0,0,0,0.07)] hover:shadow-[0_8px_16px_rgba(0,0,0,0.1)] transition-all p-5 h-full hover:border-amber-300 cursor-pointer">
+                  <div className="flex items-center justify-between mb-4">
+                    <div className="p-2.5 bg-amber-50 rounded-lg group-hover:bg-amber-100 transition-colors">
+                      <BarChart3 className="w-5 h-5 text-amber-600" />
+                    </div>
+                    <ArrowRight className="w-4 h-4 text-gray-400 group-hover:text-amber-600 group-hover:translate-x-0.5 transition-all" />
+                  </div>
+                  <h3 className="text-[14px] font-semibold text-gray-900 mb-1">Route Tables</h3>
+                  <p className="text-[12px] text-gray-500">Organize routes into logical tables</p>
+                </div>
+              </Link>
+
+              {/* Firewall Rules Card */}
+              <Link
+                to="/services/vpc/firewalls"
+                className="group"
+              >
+                <div className="bg-white rounded-lg border border-gray-200 shadow-[0_1px_3px_rgba(0,0,0,0.07)] hover:shadow-[0_8px_16px_rgba(0,0,0,0.1)] transition-all p-5 h-full hover:border-red-300 cursor-pointer">
+                  <div className="flex items-center justify-between mb-4">
+                    <div className="p-2.5 bg-red-50 rounded-lg group-hover:bg-red-100 transition-colors">
+                      <Info className="w-5 h-5 text-red-600" />
+                    </div>
+                    <ArrowRight className="w-4 h-4 text-gray-400 group-hover:text-red-600 group-hover:translate-x-0.5 transition-all" />
+                  </div>
+                  <h3 className="text-[14px] font-semibold text-gray-900 mb-1">Firewall Rules</h3>
+                  <p className="text-[12px] text-gray-500">Control traffic between resources</p>
+                </div>
+              </Link>
+
+              {/* Subnets Card */}
+              <Link
+                to="/services/vpc/subnets"
+                className="group"
+              >
+                <div className="bg-white rounded-lg border border-gray-200 shadow-[0_1px_3px_rgba(0,0,0,0.07)] hover:shadow-[0_8px_16px_rgba(0,0,0,0.1)] transition-all p-5 h-full hover:border-green-300 cursor-pointer">
+                  <div className="flex items-center justify-between mb-4">
+                    <div className="p-2.5 bg-green-50 rounded-lg group-hover:bg-green-100 transition-colors">
+                      <Network className="w-5 h-5 text-green-600" />
+                    </div>
+                    <ArrowRight className="w-4 h-4 text-gray-400 group-hover:text-green-600 group-hover:translate-x-0.5 transition-all" />
+                  </div>
+                  <h3 className="text-[14px] font-semibold text-gray-900 mb-1">Subnets</h3>
+                  <p className="text-[12px] text-gray-500">Create and manage subnets</p>
+                </div>
+              </Link>
+            </div>
+          </div>
+        )}
 
         {/* Recent Activity */}
         {networks.length > 0 && (
@@ -370,6 +454,7 @@ const VPCDashboardPage = () => {
 
           <FormField label="Subnet Creation Mode" required>
             <RadioGroup
+              name="subnet-mode"
               options={[
                 { value: 'auto', label: 'Automatic', description: 'Create subnets automatically in each region' },
                 { value: 'custom', label: 'Custom', description: 'Create subnets manually with custom IP ranges' },
