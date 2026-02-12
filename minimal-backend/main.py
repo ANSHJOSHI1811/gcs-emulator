@@ -1,7 +1,7 @@
 """Main FastAPI application"""
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from api import compute, projects, vpc, storage, iam, firewall, routes, peering
+from api import compute, projects, vpc, storage, iam, firewall, routes
 import os
 
 app = FastAPI(
@@ -30,7 +30,6 @@ def health():
 app.include_router(compute.router, prefix="/compute/v1", tags=["Compute Engine"])
 app.include_router(vpc.router, prefix="/compute/v1", tags=["VPC Networks"])
 app.include_router(firewall.router, prefix="/compute/v1", tags=["Firewall Rules"])
-app.include_router(peering.router, prefix="", tags=["VPC Peering"])
 app.include_router(routes.router, tags=["VPC Routes"])
 app.include_router(projects.router, prefix="/cloudresourcemanager/v1", tags=["Projects"])
 app.include_router(iam.router, prefix="/v1", tags=["IAM & Admin"])

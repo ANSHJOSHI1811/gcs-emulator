@@ -64,7 +64,7 @@ def create_project(project_data: ProjectCreate, db: Session = Depends(get_db)):
 @router.delete("/projects/{project_id}")
 def delete_project(project_id: str, db: Session = Depends(get_db)):
     """Delete a project and all its resources"""
-    from database import Network, Instance, Firewall, Route, VPCPeering
+    from database import Network, Instance, Firewall, Route
     
     # Find project
     project = db.query(Project).filter_by(id=project_id).first()
@@ -90,11 +90,6 @@ def delete_project(project_id: str, db: Session = Depends(get_db)):
     routes = db.query(Route).filter_by(project_id=project_id).all()
     for route in routes:
         db.delete(route)
-    
-    # Delete all peerings
-    peerings = db.query(VPCPeering).filter_by(project_id=project_id).all()
-    for peering in peerings:
-        db.delete(peering)
     
     # Delete project
     db.delete(project)

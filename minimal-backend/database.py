@@ -134,55 +134,7 @@ class Route(Base):
     next_hop_network = Column(String)  # Network reference
     priority = Column(Integer, default=1000)
     tags = Column(JSON)  # List of instance tags
-    route_table_id = Column(Integer)  # Reference to route table (nullable for backward compat)
     created_at = Column(DateTime, default=datetime.utcnow)
-
-
-class RouteTable(Base):
-    """Route Table for managing routes"""
-    __tablename__ = "route_tables"
-    
-    id = Column(Integer, primary_key=True, autoincrement=True)
-    name = Column(String, nullable=False)
-    project_id = Column(String, nullable=False)
-    network = Column(String, nullable=False)  # Network reference
-    description = Column(String)
-    is_default = Column(Boolean, default=False)  # Auto-created default table
-    created_at = Column(DateTime, default=datetime.utcnow)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
-
-
-class SubnetRouteTableAssociation(Base):
-    """Association between subnet and route table"""
-    __tablename__ = "subnet_route_table_associations"
-    
-    id = Column(Integer, primary_key=True, autoincrement=True)
-    subnet_name = Column(String, nullable=False)
-    route_table_id = Column(Integer, nullable=False)
-    project_id = Column(String, nullable=False)
-    created_at = Column(DateTime, default=datetime.utcnow)
-
-
-class VPCPeering(Base):
-    """VPC Peering connection between two networks"""
-    __tablename__ = "vpc_peerings"
-    
-    id = Column(Integer, primary_key=True, autoincrement=True)
-    name = Column(String, nullable=False)
-    project_id = Column(String, nullable=False)
-    local_network = Column(String, nullable=False)  # Source VPC name
-    peer_network = Column(String, nullable=False)  # Target VPC name
-    peer_project_id = Column(String, nullable=False)  # Target project
-    state = Column(String, default="ACTIVE")  # ACTIVE, INACTIVE, DELETING
-    state_details = Column(String, default="")
-    auto_create_routes = Column(Boolean, default=True)
-    export_custom_routes = Column(Boolean, default=False)
-    import_custom_routes = Column(Boolean, default=False)
-    export_subnet_routes_with_public_ip = Column(Boolean, default=True)
-    import_subnet_routes_with_public_ip = Column(Boolean, default=True)
-    peering_config = Column(JSON, default={})  # Additional configuration
-    created_at = Column(DateTime, default=datetime.utcnow)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
 
 class SignedUrlSession(Base):

@@ -56,8 +56,6 @@ export const serviceCategories: ServiceCategory[] = [
         enabled: true,
         sidebarLinks: [
           { label: 'VM Instances', path: '/services/compute-engine/instances', icon: Cpu },
-          { label: 'Instance Groups', path: '/services/compute-engine/groups' },
-          { label: 'Disks', path: '/services/compute-engine/disks' },
         ],
       },
     ],
