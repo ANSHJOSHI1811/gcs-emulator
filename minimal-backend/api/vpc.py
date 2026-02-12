@@ -120,6 +120,85 @@ def validate_no_subnet_overlap(db: Session, network_name: str, new_subnet_cidr: 
     return True
 
 
+def calculate_default_subnet_cidr(vpc_cidr: str) -> str:
+    """
+    Calculate appropriate default subnet CIDR based on VPC size.
+    
+    Rules:
+    - For VPC /16: Use /20 (standard GCP default)
+    - For smaller VPCs: Use VPC mask + 4 (but max /29 to allow some IPs)
+    - Subnet must fit within VPC
+    - Use first available subnet range
+    """
+    vpc_net = ipaddress.ip_network(vpc_cidr, strict=False)
+    vpc_prefix = vpc_net.prefixlen
+    
+    # Calculate subnet prefix (VPC mask + 4, standard GCP practice)
+    # For /16 VPC → /20 subnet (GCP default)
+    # For /20 VPC → /24 subnet
+    # For /24 VPC → /28 subnet
+    subnet_prefix = min(vpc_prefix + 4, 29)  # Max /29 to allow at least 8 IPs
+    
+    # Ensure subnet doesn't exceed /29 (need at least 8 IPs: network, gateway, broadcast, + 5 usable)
+    if subnet_prefix > 29:
+        subnet_prefix = 29
+    
+    # Ensure subnet isn't smaller than VPC (shouldn't happen but safety check)
+    if subnet_prefix <= vpc_prefix:
+        subnet_prefix = vpc_prefix + 1
+    
+    # Create subnet using VPC's network address and calculated prefix
+    subnet_cidr = f"{vpc_net.network_address}/{subnet_prefix}"
+    
+    # Validate subnet fits within VPC
+    subnet_net = ipaddress.ip_network(subnet_cidr)
+    if not subnet_net.subnet_of(vpc_net):
+        # If it doesn't fit, use the entire VPC as subnet (edge case for very small VPCs)
+        subnet_cidr = vpc_cidr
+    
+    return subnet_cidr
+
+
+def ensure_default_subnet(db: Session, project: str, network: Network):
+    """Ensure default subnet exists for default network with size adapted to VPC"""
+    from ip_manager import get_gateway_ip
+    
+    # Check if default subnet already exists
+    default_subnet = db.query(Subnet).filter_by(
+        network="default",
+        region="us-central1",
+        name="default-subnet-us-central1"
+    ).first()
+    
+    if not default_subnet:
+        # Get VPC CIDR (default to 10.128.0.0/16 if not set)
+        vpc_cidr = network.cidr_range if network.cidr_range else "10.128.0.0/16"
+        
+        # Calculate appropriate subnet size based on VPC size
+        subnet_cidr = calculate_default_subnet_cidr(vpc_cidr)
+        gateway = get_gateway_ip(subnet_cidr)
+        
+        default_subnet = Subnet(
+            name="default-subnet-us-central1",
+            network="default",
+            region="us-central1",
+            ip_cidr_range=subnet_cidr,
+            gateway_ip=gateway,
+            next_available_ip=2  # Start at .2 (skip .0 and .1)
+        )
+        
+        db.add(default_subnet)
+        db.commit()
+        db.refresh(default_subnet)
+        
+        print(f"✅ Created default subnet for default network: {subnet_cidr} (VPC: {vpc_cidr})")
+        
+        # Create automatic subnet route
+        create_subnet_route(db, project, "default", "default-subnet-us-central1", subnet_cidr)
+    
+    return default_subnet
+
+
 def ensure_default_network(db: Session, project: str):
     """Ensure default network exists for project"""
     default = db.query(Network).filter_by(project_id=project, name="default").first()
@@ -129,7 +208,8 @@ def ensure_default_network(db: Session, project: str):
             name="default",
             project_id=project,
             docker_network_name="bridge",  # Use Docker's default bridge
-            auto_create_subnetworks=True
+            auto_create_subnetworks=True,
+            cidr_range="10.128.0.0/16"  # Default network CIDR
         )
         db.add(default)
         db.commit()
@@ -138,6 +218,16 @@ def ensure_default_network(db: Session, project: str):
         
         # Create default Internet Gateway route
         create_default_internet_gateway_route(db, project, "default")
+    else:
+        # Ensure network has CIDR set (for existing networks)
+        if not default.cidr_range:
+            default.cidr_range = "10.128.0.0/16"
+            db.commit()
+            db.refresh(default)
+    
+    # Always ensure default subnet exists (even for existing networks)
+    ensure_default_subnet(db, project, default)
+    
     return default
 
 @router.get("/projects/{project}/global/networks")

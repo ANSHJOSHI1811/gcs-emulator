@@ -6,7 +6,7 @@ interface Project {
   name: string;
   projectNumber: string;
   lifecycleState: string;
-  createTime: string;
+  createTime?: string;
 }
 
 interface ProjectContextType {

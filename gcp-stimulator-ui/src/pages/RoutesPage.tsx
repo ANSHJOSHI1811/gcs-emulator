@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useProject } from '../contexts/ProjectContext';
-import { Plus, Trash2, RefreshCw, AlertCircle, Navigation } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
+import { Plus, Trash2, RefreshCw, AlertCircle, Network, Route, Globe, ArrowRight } from 'lucide-react';
 import { apiClient } from '../api/client';
 import { Modal, ModalFooter, ModalButton } from '../components/Modal';
 import { FormField, Input, Select } from '../components/FormFields';
@@ -26,13 +27,14 @@ interface NetworkOption {
 
 const RoutesPage = () => {
   const { currentProject } = useProject();
+  const navigate = useNavigate();
   const [routes, setRoutes] = useState<RouteRule[]>([]);
   const [networks, setNetworks] = useState<NetworkOption[]>([]);
+  const [selectedNetwork, setSelectedNetwork] = useState<string>('all');
   const [loading, setLoading] = useState(true);
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [createLoading, setCreateLoading] = useState(false);
   const [deleteLoading, setDeleteLoading] = useState<string | null>(null);
-  const [filterTab, setFilterTab] = useState<'all' | 'system' | 'custom'>('all');
   const [formData, setFormData] = useState({
     name: '',
     network: '',
@@ -45,12 +47,18 @@ const RoutesPage = () => {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    loadData();
+    loadData(true); // Initial load with loading indicator
+    const interval = setInterval(() => {
+      loadData(false); // Auto-refresh without loading indicator
+    }, 30000); // Changed to 30 seconds
+    return () => clearInterval(interval);
   }, [currentProject]);
 
-  const loadData = async () => {
+  const loadData = async (showLoading = true) => {
     try {
-      setLoading(true);
+      if (showLoading) {
+        setLoading(true);
+      }
       setError(null);
 
       // Load networks
@@ -64,7 +72,9 @@ const RoutesPage = () => {
       console.error('Failed to load routes:', error);
       setError('Failed to load routes. Please try again.');
     } finally {
-      setLoading(false);
+      if (showLoading) {
+        setLoading(false);
+      }
     }
   };
 
@@ -76,7 +86,7 @@ const RoutesPage = () => {
     try {
       const routeData: any = {
         name: formData.name,
-        network: formData.network,
+        network: `https://www.googleapis.com/compute/v1/projects/${currentProject}/global/networks/${formData.network}`,
         destRange: formData.destRange,
         priority: formData.priority,
       };
@@ -88,7 +98,7 @@ const RoutesPage = () => {
       // Set next hop based on type
       switch (formData.nextHopType) {
         case 'gateway':
-          routeData.nextHopGateway = `projects/${currentProject}/global/gateways/${formData.nextHopValue}`;
+          routeData.nextHopGateway = formData.nextHopValue;
           break;
         case 'ip':
           routeData.nextHopIp = formData.nextHopValue;
@@ -116,7 +126,7 @@ const RoutesPage = () => {
       await loadData();
     } catch (error: any) {
       console.error('Failed to create route:', error);
-      setError(error.response?.data?.error?.message || 'Failed to create route');
+      setError(error.response?.data?.detail || 'Failed to create route');
     } finally {
       setCreateLoading(false);
     }
@@ -135,247 +145,241 @@ const RoutesPage = () => {
       await loadData();
     } catch (error: any) {
       console.error('Failed to delete route:', error);
-      setError(error.response?.data?.error?.message || 'Failed to delete route');
+      setError(error.response?.data?.detail || 'Failed to delete route');
     } finally {
       setDeleteLoading(null);
     }
   };
 
-  const extractNetworkName = (networkUrl: string): string => {
-    if (!networkUrl) return '-';
-    const parts = networkUrl.split('/');
-    return parts[parts.length - 1] || networkUrl;
+  const getNetworkName = (network: string) => {
+    const match = network.match(/\/networks\/(.+?)(?:\/|$)/);
+    return match ? match[1] : network;
   };
 
-  const isSystemRoute = (routeName: string): boolean => {
-    return routeName.startsWith('default-route-') || routeName.startsWith('route-');
+  const getNextHopDisplay = (route: RouteRule) => {
+    if (route.nextHopGateway) return { type: 'Gateway', value: route.nextHopGateway };
+    if (route.nextHopIp) return { type: 'IP Address', value: route.nextHopIp };
+    if (route.nextHopInstance) return { type: 'Instance', value: route.nextHopInstance.split('/').pop() || route.nextHopInstance };
+    if (route.nextHopNetwork) return { type: 'Network', value: route.nextHopNetwork.split('/').pop() || route.nextHopNetwork };
+    return { type: 'Unknown', value: '-' };
   };
 
-  const getNextHop = (route: RouteRule): string => {
-    if (route.nextHopGateway) {
-      const parts = route.nextHopGateway.split('/');
-      return `Gateway: ${parts[parts.length - 1]}`;
-    }
-    if (route.nextHopIp) return `IP: ${route.nextHopIp}`;
-    if (route.nextHopInstance) return `Instance: ${extractNetworkName(route.nextHopInstance)}`;
-    if (route.nextHopNetwork) return `Network: ${extractNetworkName(route.nextHopNetwork)}`;
-    return '-';
-  };
-
-  const filteredRoutes = routes.filter((route) => {
-    if (filterTab === 'system') {
-      return isSystemRoute(route.name);
-    }
-    if (filterTab === 'custom') {
-      return !isSystemRoute(route.name);
-    }
-    return true;
+  // Filter routes by selected network
+  const filteredRoutes = routes.filter(route => {
+    if (selectedNetwork === 'all') return true;
+    return getNetworkName(route.network) === selectedNetwork;
   });
 
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <div className="text-center">
+          <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mb-4"></div>
+          <p className="text-gray-600">Loading routes...</p>
+        </div>
+      </div>
+    );
+  }
+
+  // Count routes by network
+  const routesByNetwork = routes.reduce((acc, route) => {
+    const netName = getNetworkName(route.network);
+    acc[netName] = (acc[netName] || 0) + 1;
+    return acc;
+  }, {} as Record<string, number>);
+
   return (
-    <div className="h-full flex flex-col bg-gray-50">
+    <div className="min-h-screen bg-gray-50">
       {/* Header */}
-      <div className="bg-white border-b border-gray-200 px-8 py-6">
-        <div className="flex items-center justify-between">
-          <div>
-            <h1 className="text-2xl font-semibold text-gray-900">Routes</h1>
-            <p className="text-sm text-gray-500 mt-1">
-              Define custom routing paths for your VPC networks
-            </p>
-          </div>
-          <div className="flex items-center gap-3">
-            <button
-              onClick={loadData}
-              disabled={loading}
-              className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-50"
-            >
-              <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
-              Refresh
-            </button>
+      <div className="bg-white border-b border-gray-200">
+        <div className="max-w-[1400px] mx-auto px-8 py-5">
+          <div className="flex items-center justify-between mb-4">
+            <div>
+              <h1 className="text-[22px] font-normal text-gray-900">Routes</h1>
+              <p className="text-[13px] text-gray-600 mt-1">
+                Routes define paths for network traffic in your VPC networks
+              </p>
+            </div>
             <button
               onClick={() => setShowCreateModal(true)}
-              className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700"
+              className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 transition-colors text-[13px] font-medium shadow-sm"
             >
               <Plus className="w-4 h-4" />
-              Create Route
+              CREATE ROUTE
             </button>
           </div>
+          
+          {/* Network Filter */}
+          {networks.length > 0 && (
+            <div className="flex items-center gap-3 pt-3 border-t border-gray-100">
+              <label className="text-[13px] font-medium text-gray-700 min-w-[80px]">
+                Filter by network:
+              </label>
+              <select
+                value={selectedNetwork}
+                onChange={(e) => setSelectedNetwork(e.target.value)}
+                className="px-3 py-1.5 border border-gray-300 rounded text-[13px] focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white"
+              >
+                <option value="all">All networks</option>
+                {networks.map((network) => {
+                  const count = routesByNetwork[network.name] || 0;
+                  return (
+                    <option key={network.name} value={network.name}>
+                      {network.name} ({count})
+                    </option>
+                  );
+                })}
+              </select>
+              {selectedNetwork !== 'all' && (
+                <button
+                  onClick={() => setSelectedNetwork('all')}
+                  className="text-[13px] text-blue-600 hover:text-blue-700 font-medium"
+                >
+                  Clear
+                </button>
+              )}
+            </div>
+          )}
         </div>
       </div>
 
       {/* Error Message */}
       {error && (
-        <div className="mx-8 mt-4 p-4 bg-red-50 border border-red-200 rounded-lg flex items-start gap-3">
-          <AlertCircle className="w-5 h-5 text-red-600 flex-shrink-0 mt-0.5" />
-          <div className="flex-1">
-            <h3 className="text-sm font-medium text-red-800">Error</h3>
-            <p className="text-sm text-red-700 mt-1">{error}</p>
+        <div className="max-w-[1400px] mx-auto px-8 pt-6">
+          <div className="bg-red-50 border border-red-200 text-red-800 px-4 py-3 rounded flex items-start gap-2">
+            <AlertCircle className="w-5 h-5 flex-shrink-0 mt-0.5" />
+            <div className="flex-1">
+              <p className="text-[13px]">{error}</p>
+              <button
+                onClick={loadData}
+                className="mt-2 text-[13px] text-blue-600 hover:underline font-medium"
+              >
+                Try again
+              </button>
+            </div>
           </div>
-          <button
-            onClick={() => setError(null)}
-            className="text-red-600 hover:text-red-800"
-          >
-            ×
-          </button>
         </div>
       )}
 
-      {/* Content */}
-      <div className="flex-1 overflow-auto p-8">
+      {/* Routes Grid */}
+      <div className="max-w-[1400px] mx-auto px-8 py-6">
         {loading ? (
-          <div className="flex items-center justify-center h-64">
-            <div className="text-gray-500">Loading routes...</div>
-          </div>
-        ) : routes.length === 0 ? (
-          <div className="flex flex-col items-center justify-center h-64 bg-white rounded-lg border border-gray-200">
-            <Navigation className="w-12 h-12 text-gray-400 mb-4" />
-            <h3 className="text-lg font-medium text-gray-900 mb-2">No routes found</h3>
-            <p className="text-sm text-gray-500 mb-4">
-              Routes are automatically created when you create a VPC or subnet. You can also create custom routes.
-            </p>
-            <button
-              onClick={() => setShowCreateModal(true)}
-              className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700"
-            >
-              <Plus className="w-4 h-4" />
-              Create Route
-            </button>
+          <div className="flex items-center justify-center py-20 bg-white rounded border border-gray-300">
+            <RefreshCw className="w-6 h-6 text-blue-600 animate-spin" />
           </div>
         ) : filteredRoutes.length === 0 ? (
-          <div className="flex flex-col items-center justify-center h-64 bg-white rounded-lg border border-gray-200">
-            <Navigation className="w-12 h-12 text-gray-400 mb-4" />
-            <h3 className="text-lg font-medium text-gray-900 mb-2">No {filterTab} routes found</h3>
-            <p className="text-sm text-gray-500 mb-4">
-              {filterTab === 'system' && 'No system routes are available'}
-              {filterTab === 'custom' && 'Create your first custom route'}
+          <div className="text-center py-16 bg-white rounded border border-gray-300">
+            <Route className="w-12 h-12 text-gray-400 mx-auto mb-3" />
+            <h3 className="text-[16px] font-medium text-gray-900 mb-1">
+              {selectedNetwork === 'all' ? 'No routes' : `No routes in ${selectedNetwork}`}
+            </h3>
+            <p className="text-[13px] text-gray-600 mb-4">
+              {selectedNetwork === 'all'
+                ? 'Create a route to get started'
+                : 'This network has no routes'}
             </p>
-            {filterTab === 'custom' && (
+            {routes.length === 0 && (
               <button
                 onClick={() => setShowCreateModal(true)}
-                className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700"
+                className="inline-flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 text-[13px] font-medium"
               >
                 <Plus className="w-4 h-4" />
-                Create Route
+                CREATE ROUTE
               </button>
             )}
           </div>
         ) : (
-          <div className="space-y-4">
-            {/* Filter Tabs */}
-            <div className="flex gap-2 border-b border-gray-200">
-              <button
-                onClick={() => setFilterTab('all')}
-                className={`px-4 py-3 text-sm font-medium border-b-2 transition-colors ${
-                  filterTab === 'all'
-                    ? 'text-blue-600 border-blue-600'
-                    : 'text-gray-600 border-transparent hover:text-gray-900'
-                }`}
-              >
-                All Routes ({routes.length})
-              </button>
-              <button
-                onClick={() => setFilterTab('system')}
-                className={`px-4 py-3 text-sm font-medium border-b-2 transition-colors ${
-                  filterTab === 'system'
-                    ? 'text-blue-600 border-blue-600'
-                    : 'text-gray-600 border-transparent hover:text-gray-900'
-                }`}
-              >
-                System Routes ({routes.filter((r) => isSystemRoute(r.name)).length})
-              </button>
-              <button
-                onClick={() => setFilterTab('custom')}
-                className={`px-4 py-3 text-sm font-medium border-b-2 transition-colors ${
-                  filterTab === 'custom'
-                    ? 'text-blue-600 border-blue-600'
-                    : 'text-gray-600 border-transparent hover:text-gray-900'
-                }`}
-              >
-                Custom Routes ({routes.filter((r) => !isSystemRoute(r.name)).length})
-              </button>
-            </div>
-
-            {/* Routes Table */}
-            <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
-            <table className="min-w-full divide-y divide-gray-200">
-              <thead className="bg-gray-50">
-                <tr>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Name
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Network
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Destination Range
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Next Hop
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Priority
-                  </th>
-                  <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Actions
-                  </th>
-                </tr>
-              </thead>
-              <tbody className="bg-white divide-y divide-gray-200">
-                {filteredRoutes.map((route) => {
-                  const isSystem = isSystemRoute(route.name);
-                  return (
-                  <tr key={route.id} className="hover:bg-gray-50">
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      <div className="flex items-center">
-                        <Navigation className={`w-5 h-5 mr-3 ${
-                          isSystem ? 'text-blue-600' : 'text-purple-600'
-                        }`} />
-                        <div>
-                          <div className="flex items-center gap-2">
-                            <span className="text-sm font-medium text-gray-900">{route.name}</span>
-                            {isSystem && (
-                              <span className="px-2 py-1 bg-blue-100 text-blue-800 text-xs font-medium rounded">
-                                System
-                              </span>
-                            )}
-                          </div>
-                          {route.description && (
-                            <div className="text-xs text-gray-500 mt-1">{route.description}</div>
-                          )}
-                        </div>
-                      </div>
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      <div className="text-sm text-gray-900">{extractNetworkName(route.network)}</div>
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      <div className="text-sm font-mono text-gray-900">{route.destRange}</div>
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      <div className="text-sm text-gray-900">{getNextHop(route)}</div>
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      <div className="text-sm text-gray-900">{route.priority}</div>
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
-                      <button
-                        onClick={() => handleDelete(route.name)}
-                        disabled={deleteLoading === route.name || isSystem}
-                        title={isSystem ? 'Cannot delete system routes' : 'Delete route'}
-                        className={`${
-                          isSystem
-                            ? 'text-gray-400 cursor-not-allowed'
-                            : 'text-red-600 hover:text-red-900 disabled:opacity-50'
-                        }`}
-                      >
-                        <Trash2 className="w-4 h-4" />
-                      </button>
-                    </td>
+          <div className="bg-white rounded border border-gray-300 overflow-hidden">
+            <div className="overflow-x-auto">
+              <table className="min-w-full divide-y divide-gray-200">
+                <thead className="bg-gray-50">
+                  <tr>
+                    <th scope="col" className="px-4 py-3 text-left text-[11px] font-medium text-gray-700 uppercase tracking-wide">
+                      Name
+                    </th>
+                    <th scope="col" className="px-4 py-3 text-left text-[11px] font-medium text-gray-700 uppercase tracking-wide">
+                      Description
+                    </th>
+                    <th scope="col" className="px-4 py-3 text-left text-[11px] font-medium text-gray-700 uppercase tracking-wide">
+                      Destination IP range
+                    </th>
+                    <th scope="col" className="px-4 py-3 text-left text-[11px] font-medium text-gray-700 uppercase tracking-wide">
+                      Priority
+                    </th>
+                    <th scope="col" className="px-4 py-3 text-left text-[11px] font-medium text-gray-700 uppercase tracking-wide">
+                      Network
+                    </th>
+                    <th scope="col" className="px-4 py-3 text-left text-[11px] font-medium text-gray-700 uppercase tracking-wide">
+                      Next hop
+                    </th>
+                    <th scope="col" className="relative px-4 py-3">
+                      <span className="sr-only">Actions</span>
+                    </th>
                   </tr>
-                  );
-                })}
-              </tbody>
-            </table>
+                </thead>
+                <tbody className="bg-white divide-y divide-gray-200">
+                  {filteredRoutes.map((route) => {
+                    const nextHop = getNextHopDisplay(route);
+                    const networkName = getNetworkName(route.network);
+                    
+                    return (
+                      <tr key={route.id} className="hover:bg-blue-50 transition-colors group">
+                        <td className="px-4 py-3 whitespace-nowrap">
+                          <div className="flex items-center gap-2">
+                            <Route className="w-4 h-4 text-gray-400 flex-shrink-0" />
+                            <button className="text-[13px] text-blue-600 hover:underline font-normal">
+                              {route.name}
+                            </button>
+                          </div>
+                        </td>
+                        <td className="px-4 py-3">
+                          <span className="text-[13px] text-gray-700 max-w-xs block truncate" title={route.description}>
+                            {route.description || '—'}
+                          </span>
+                        </td>
+                        <td className="px-4 py-3 whitespace-nowrap">
+                          <code className="text-[13px] text-gray-900 font-mono">
+                            {route.destRange}
+                          </code>
+                        </td>
+                        <td className="px-4 py-3 whitespace-nowrap">
+                          <span className="text-[13px] text-gray-900">{route.priority}</span>
+                        </td>
+                        <td className="px-4 py-3 whitespace-nowrap">
+                          <span className="text-[13px] text-gray-900">{networkName}</span>
+                        </td>
+                        <td className="px-4 py-3">
+                          <div className="text-[13px]">
+                            <div className="text-gray-900">{nextHop.type}</div>
+                            <div className="text-gray-600 text-[12px] mt-0.5">{nextHop.value}</div>
+                          </div>
+                        </td>
+                        <td className="px-4 py-3 whitespace-nowrap text-right">
+                          <button
+                            onClick={() => handleDelete(route.name)}
+                            disabled={deleteLoading === route.name}
+                            className="opacity-0 group-hover:opacity-100 inline-flex items-center gap-1 p-1.5 text-gray-500 hover:text-red-600 hover:bg-red-50 rounded transition-all disabled:opacity-100"
+                            title="Delete route"
+                          >
+                            {deleteLoading === route.name ? (
+                              <RefreshCw className="w-4 h-4 animate-spin" />
+                            ) : (
+                              <Trash2 className="w-4 h-4" />
+                            )}
+                          </button>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+            
+            {/* Table Footer with Count */}
+            <div className="bg-white border-t border-gray-200 px-4 py-3">
+              <p className="text-[13px] text-gray-700">
+                {filteredRoutes.length} {filteredRoutes.length === 1 ? 'item' : 'items'}
+              </p>
             </div>
           </div>
         )}
@@ -385,31 +389,21 @@ const RoutesPage = () => {
       <Modal
         isOpen={showCreateModal}
         onClose={() => setShowCreateModal(false)}
-        title="Create Route"
-        description="Define a custom route for network traffic"
-        size="xl"
+        title="Create New Route"
+        size="lg"
       >
         <form onSubmit={handleCreate} className="space-y-5">
-          <FormField label="Name" required help="Lowercase letters, numbers, and hyphens only">
+          <FormField label="Route Name" required help="Lowercase letters, numbers, and hyphens only">
             <Input
               type="text"
               value={formData.name}
               onChange={(e) => setFormData({ ...formData, name: e.target.value.toLowerCase() })}
-              placeholder="my-route"
+              placeholder="my-custom-route"
               required
             />
           </FormField>
 
-          <FormField label="Description">
-            <Input
-              type="text"
-              value={formData.description}
-              onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-              placeholder="Optional description"
-            />
-          </FormField>
-
-          <FormField label="Network" required>
+          <FormField label="Network" required help="VPC network this route will belong to">
             <Select
               value={formData.network}
               onChange={(e) => setFormData({ ...formData, network: e.target.value })}
@@ -417,29 +411,25 @@ const RoutesPage = () => {
             >
               <option value="">Select a network</option>
               {networks.map((network) => (
-                <option key={network.name} value={network.selfLink}>
+                <option key={network.name} value={network.name}>
                   {network.name}
                 </option>
               ))}
             </Select>
           </FormField>
 
-          <FormField
-            label="Destination IP Range"
-            required
-            help="CIDR notation (e.g., 0.0.0.0/0 for internet, 10.0.0.0/8 for private)"
-          >
+          <FormField label="Destination IP Range" required help="Traffic destination range in CIDR notation (e.g., 0.0.0.0/0 for internet)">
             <Input
               type="text"
               value={formData.destRange}
               onChange={(e) => setFormData({ ...formData, destRange: e.target.value })}
-              placeholder="0.0.0.0/0"
+              placeholder="0.0.0.0/0 or 192.168.0.0/24"
               className="font-mono"
               required
             />
           </FormField>
 
-          <FormField label="Priority" required help="0-65535 (lower = higher priority)">
+          <FormField label="Priority" required help="Lower values have higher priority (0-65535)">
             <Input
               type="number"
               value={formData.priority}
@@ -462,7 +452,7 @@ const RoutesPage = () => {
                 });
               }}
             >
-              <option value="gateway">Gateway</option>
+              <option value="gateway">Gateway (Internet)</option>
               <option value="ip">IP Address</option>
               <option value="instance">Instance</option>
               <option value="network">Network</option>
@@ -473,10 +463,10 @@ const RoutesPage = () => {
             label="Next Hop Value"
             required
             help={
-              formData.nextHopType === 'gateway' ? 'The default gateway for internet access' :
-              formData.nextHopType === 'ip' ? 'IP address of the next hop' :
-              formData.nextHopType === 'instance' ? 'Instance name or full resource URL' :
-              'Network name or full resource URL'
+              formData.nextHopType === 'gateway' ? 'Use "default-internet-gateway" for internet access' :
+              formData.nextHopType === 'ip' ? 'IP address to route traffic to' :
+              formData.nextHopType === 'instance' ? 'Name of the instance to route traffic to' :
+              'Name of the network to route traffic to'
             }
           >
             {formData.nextHopType === 'gateway' ? (
@@ -494,14 +484,23 @@ const RoutesPage = () => {
                 onChange={(e) => setFormData({ ...formData, nextHopValue: e.target.value })}
                 placeholder={
                   formData.nextHopType === 'ip'
-                    ? '192.168.1.1'
+                    ? '10.0.0.1'
                     : formData.nextHopType === 'instance'
-                    ? 'instance-name or full URL'
-                    : 'network-name or full URL'
+                    ? 'instance-name'
+                    : 'network-name'
                 }
                 required
               />
             )}
+          </FormField>
+
+          <FormField label="Description (Optional)">
+            <Input
+              type="text"
+              value={formData.description}
+              onChange={(e) => setFormData({ ...formData, description: e.target.value })}
+              placeholder="Route for production traffic"
+            />
           </FormField>
 
           <ModalFooter>
@@ -518,7 +517,17 @@ const RoutesPage = () => {
               loading={createLoading}
               disabled={networks.length === 0}
             >
-              Create
+              {createLoading ? (
+                <>
+                  <RefreshCw className="w-4 h-4 animate-spin mr-2" />
+                  Creating...
+                </>
+              ) : (
+                <>
+                  <Plus className="w-4 h-4 mr-2" />
+                  Create Route
+                </>
+              )}
             </ModalButton>
           </ModalFooter>
         </form>

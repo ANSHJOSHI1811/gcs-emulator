@@ -21,6 +21,7 @@ import SubnetsPage from './pages/SubnetsPage';
 import FirewallsPage from './pages/FirewallsPage';
 import RoutesPage from './pages/RoutesPage';
 import RouteTablesPage from './pages/RouteTablesPage';
+import VPCPeeringPage from './pages/VPCPeeringPage';
 
 function App() {
   return (
@@ -62,7 +63,7 @@ function App() {
               <Route path="subnets" element={<SubnetsPage />} />
               <Route path="firewalls" element={<FirewallsPage />} />
               <Route path="routes" element={<RoutesPage />} />
-              <Route path="route-tables" element={<RouteTablesPage />} />
+              <Route path="peering" element={<VPCPeeringPage />} />
             </Route>
             
             {/* Legacy VPC route redirect */}

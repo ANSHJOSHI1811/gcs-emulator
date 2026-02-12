@@ -60,3 +60,44 @@ def create_project(project_data: ProjectCreate, db: Session = Depends(get_db)):
         "projectNumber": str(project.project_number),
         "lifecycleState": "ACTIVE"
     }
+
+@router.delete("/projects/{project_id}")
+def delete_project(project_id: str, db: Session = Depends(get_db)):
+    """Delete a project and all its resources"""
+    from database import Network, Instance, Firewall, Route, VPCPeering
+    
+    # Find project
+    project = db.query(Project).filter_by(id=project_id).first()
+    if not project:
+        raise HTTPException(status_code=404, detail=f"Project {project_id} not found")
+    
+    # Delete all instances
+    instances = db.query(Instance).filter_by(project_id=project_id).all()
+    for instance in instances:
+        db.delete(instance)
+    
+    # Delete all networks
+    networks = db.query(Network).filter_by(project_id=project_id).all()
+    for network in networks:
+        db.delete(network)
+    
+    # Delete all firewalls
+    firewalls = db.query(Firewall).filter_by(project_id=project_id).all()
+    for firewall in firewalls:
+        db.delete(firewall)
+    
+    # Delete all routes
+    routes = db.query(Route).filter_by(project_id=project_id).all()
+    for route in routes:
+        db.delete(route)
+    
+    # Delete all peerings
+    peerings = db.query(VPCPeering).filter_by(project_id=project_id).all()
+    for peering in peerings:
+        db.delete(peering)
+    
+    # Delete project
+    db.delete(project)
+    db.commit()
+    
+    return {"message": f"Project {project_id} deleted successfully"}

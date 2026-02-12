@@ -292,6 +292,86 @@ gcloud compute firewall-rules update allow-ssh --priority=500
 gcloud compute firewall-rules delete allow-ssh
 ```
 
+### VPC Peering
+
+```bash
+# Create VPC peering connection (from network1 to network2)
+gcloud compute networks peerings create peering-1-to-2 \
+  --network=network1 \
+  --peer-network=network2 \
+  --auto-create-routes
+
+# Create VPC peering with custom settings
+gcloud compute networks peerings create prod-to-staging \
+  --network=production-vpc \
+  --peer-network=staging-vpc \
+  --auto-create-routes \
+  --auto-create-routes-for-import
+
+# List VPC peerings
+gcloud compute networks peerings list
+
+# List peerings for specific network
+gcloud compute networks peerings list --network=my-vpc
+
+# Get peering details
+gcloud compute networks peerings describe prod-to-staging --network=production-vpc
+
+# Update peering (export custom routes)
+gcloud compute networks peerings update prod-to-staging \
+  --network=production-vpc \
+  --export-custom-routes
+
+# Update peering (import custom routes)
+gcloud compute networks peerings update prod-to-staging \
+  --network=production-vpc \
+  --import-custom-routes
+
+# Accept peering (if it was pending)
+gcloud compute networks peerings accept prod-to-staging --network=production-vpc
+
+# Delete peering
+gcloud compute networks peerings delete prod-to-staging --network=production-vpc
+
+# Delete peering (force)
+gcloud compute networks peerings delete prod-to-staging --network=production-vpc --force
+```
+
+### Routes
+
+```bash
+# Create static route
+gcloud compute routes create my-route \
+  --destination-range=192.168.0.0/16 \
+  --network=my-vpc \
+  --next-hop-gateway=default-internet-gateway
+
+# Create route with next-hop instance
+gcloud compute routes create route-to-instance \
+  --destination-range=10.0.0.0/24 \
+  --network=my-vpc \
+  --next-hop-instance=my-vm \
+  --next-hop-instance-zone=us-central1-a
+
+# Create route with next-hop VPC peering
+gcloud compute routes create peering-route \
+  --destination-range=10.0.0.0/8 \
+  --network=network1 \
+  --next-hop-peering=prod-to-staging
+
+# List routes
+gcloud compute routes list
+
+# List routes for specific network
+gcloud compute routes list --filter="network:my-vpc"
+
+# Get route details
+gcloud compute routes describe my-route
+
+# Delete route
+gcloud compute routes delete my-route
+```
+
 ---
 
 ## IAM

@@ -220,16 +220,6 @@ const VPCDashboardPage = () => {
               </span>
               <ArrowRight className="w-3 h-3 text-gray-400 group-hover:text-blue-600" />
             </Link>
-            <Link 
-              to="/services/vpc/route-tables"
-              className="flex items-center gap-2 hover:bg-amber-50 px-3 py-2 rounded-lg transition-colors cursor-pointer group"
-            >
-              <div className="w-2 h-2 bg-amber-500 rounded-full group-hover:scale-125 transition-transform"></div>
-              <span className="text-[13px] text-gray-600">
-                <span className="font-semibold text-gray-900 group-hover:text-amber-600">Route Tables</span>
-              </span>
-              <ArrowRight className="w-3 h-3 text-gray-400 group-hover:text-amber-600" />
-            </Link>
           </div>
         </div>
       </div>
@@ -342,23 +332,6 @@ const VPCDashboardPage = () => {
                   </div>
                   <h3 className="text-[14px] font-semibold text-gray-900 mb-1">Routes</h3>
                   <p className="text-[12px] text-gray-500">Manage traffic routing configuration</p>
-                </div>
-              </Link>
-
-              {/* Route Tables Card */}
-              <Link
-                to="/services/vpc/route-tables"
-                className="group"
-              >
-                <div className="bg-white rounded-lg border border-gray-200 shadow-[0_1px_3px_rgba(0,0,0,0.07)] hover:shadow-[0_8px_16px_rgba(0,0,0,0.1)] transition-all p-5 h-full hover:border-amber-300 cursor-pointer">
-                  <div className="flex items-center justify-between mb-4">
-                    <div className="p-2.5 bg-amber-50 rounded-lg group-hover:bg-amber-100 transition-colors">
-                      <BarChart3 className="w-5 h-5 text-amber-600" />
-                    </div>
-                    <ArrowRight className="w-4 h-4 text-gray-400 group-hover:text-amber-600 group-hover:translate-x-0.5 transition-all" />
-                  </div>
-                  <h3 className="text-[14px] font-semibold text-gray-900 mb-1">Route Tables</h3>
-                  <p className="text-[12px] text-gray-500">Organize routes into logical tables</p>
                 </div>
               </Link>
 
@@ -642,6 +615,13 @@ const VPCDashboardPage = () => {
               >
                 <Globe className="w-4 h-4" />
                 View All Subnets
+              </Link>
+              <Link
+                to="/services/vpc/routes"
+                className="flex-1 inline-flex items-center justify-center gap-2 px-4 py-2.5 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-all text-[13px] font-medium"
+              >
+                <Route className="w-4 h-4" />
+                View Routes
               </Link>
               {selectedNetwork.name !== 'default' && (
                 <button

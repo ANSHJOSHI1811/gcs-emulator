@@ -5,9 +5,13 @@ from sqlalchemy.orm import sessionmaker
 from datetime import datetime
 import os
 
-DATABASE_URL = os.getenv("DATABASE_URL", "postgresql://postgres:12345678@database-1.cxeqkmcg8wj2.eu-north-1.rds.amazonaws.com:5432/gcs_stimulator")
+DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:////tmp/gcs_stimulator.db")
 
-engine = create_engine(DATABASE_URL)
+# For SQLite, disable connection pooling and table naming constraints
+if DATABASE_URL.startswith("sqlite"):
+    engine = create_engine(DATABASE_URL, connect_args={"check_same_thread": False}, pool_pre_ping=True)
+else:
+    engine = create_engine(DATABASE_URL)
 SessionLocal = sessionmaker(bind=engine)
 Base = declarative_base()
 
@@ -157,6 +161,28 @@ class SubnetRouteTableAssociation(Base):
     route_table_id = Column(Integer, nullable=False)
     project_id = Column(String, nullable=False)
     created_at = Column(DateTime, default=datetime.utcnow)
+
+
+class VPCPeering(Base):
+    """VPC Peering connection between two networks"""
+    __tablename__ = "vpc_peerings"
+    
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    name = Column(String, nullable=False)
+    project_id = Column(String, nullable=False)
+    local_network = Column(String, nullable=False)  # Source VPC name
+    peer_network = Column(String, nullable=False)  # Target VPC name
+    peer_project_id = Column(String, nullable=False)  # Target project
+    state = Column(String, default="ACTIVE")  # ACTIVE, INACTIVE, DELETING
+    state_details = Column(String, default="")
+    auto_create_routes = Column(Boolean, default=True)
+    export_custom_routes = Column(Boolean, default=False)
+    import_custom_routes = Column(Boolean, default=False)
+    export_subnet_routes_with_public_ip = Column(Boolean, default=True)
+    import_subnet_routes_with_public_ip = Column(Boolean, default=True)
+    peering_config = Column(JSON, default={})  # Additional configuration
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
 
 class SignedUrlSession(Base):
