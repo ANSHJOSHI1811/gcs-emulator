@@ -1,4 +1,4 @@
-import { LucideIcon, HardDrive, Cpu, Network, Shield, MessageSquare, Activity, Globe, Lock, Route, TableIcon, Share2 } from 'lucide-react';
+import { LucideIcon, HardDrive, Cpu, Network, Shield, MessageSquare, Activity, Globe, Lock, Route, TableIcon } from 'lucide-react';
 
 export interface ServiceLink {
   label: string;
@@ -78,7 +78,6 @@ export const serviceCategories: ServiceCategory[] = [
           { label: 'Subnets', path: '/services/vpc/subnets', icon: Network },
           { label: 'Firewall Rules', path: '/services/vpc/firewalls', icon: Lock },
           { label: 'Routes', path: '/services/vpc/routes', icon: Route },
-          { label: 'VPC Peering', path: '/services/vpc/peering', icon: Share2 },
         ],
       },
     ],
