@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useProject } from '../contexts/ProjectContext';
-import { Network, Globe, Plus, Trash2, Activity, ArrowRight, Info, BarChart3, Route } from 'lucide-react';
+import { Network, Globe, Plus, Trash2, Activity, ArrowRight, Info, BarChart3, Route, Router, Share2, X } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { apiClient } from '../api/client';
 import { Modal } from '../components/Modal';
@@ -24,6 +24,34 @@ interface SubnetInfo {
   totalIps: number;
 }
 
+interface CloudRouter {
+  id: number;
+  name: string;
+  region: string;
+  network: string;
+  bgp_asn?: number;
+  description?: string;
+  created_at?: string;
+}
+
+interface CloudNAT {
+  id: number;
+  name: string;
+  router_name: string;
+  region: string;
+  nat_ip_allocate_option?: string;
+  source_subnetwork_option?: string;
+}
+
+interface VPCPeering {
+  id: number;
+  name: string;
+  network: string;
+  peer_network: string;
+  state: string;
+  exchange_subnet_routes?: boolean;
+}
+
 const VPCDashboardPage = () => {
   const { currentProject } = useProject();
   const [networks, setNetworks] = useState<VPCNetwork[]>([]);
@@ -40,13 +68,141 @@ const VPCDashboardPage = () => {
     IPv4Range: '10.128.0.0/16',
   });
 
+  // Sprint 2 state
+  const [activeTab, setActiveTab] = useState<'networks' | 'routers' | 'nat' | 'peering'>('networks');
+  const [routers, setRouters] = useState<CloudRouter[]>([]);
+  const [nats, setNats] = useState<CloudNAT[]>([]);
+  const [peerings, setPeerings] = useState<VPCPeering[]>([]);
+
+  // Router form
+  const [showCreateRouter, setShowCreateRouter] = useState(false);
+  const [routerForm, setRouterForm] = useState({ name: '', region: 'us-central1', network: 'default', bgp_asn: 64512 });
+  const [creatingRouter, setCreatingRouter] = useState(false);
+
+  // NAT form
+  const [showCreateNAT, setShowCreateNAT] = useState(false);
+  const [natForm, setNatForm] = useState({ name: '', router_name: '', region: 'us-central1' });
+  const [creatingNAT, setCreatingNAT] = useState(false);
+
+  // Peering form
+  const [showCreatePeering, setShowCreatePeering] = useState(false);
+  const [peeringForm, setPeeringForm] = useState({ name: '', network: 'default', peer_network: '' });
+  const [creatingPeering, setCreatingPeering] = useState(false);
+
   useEffect(() => {
     loadData();
+    loadRouters();
+    loadPeerings();
     const interval = setInterval(() => {
       loadData();
     }, 5000);
     return () => clearInterval(interval);
   }, [currentProject]);
+
+  const loadRouters = async () => {
+    try {
+      const res = await apiClient.get(`/compute/v1/projects/${currentProject}/regions/us-central1/routers`);
+      setRouters(res.data.items || []);
+    } catch { /* silent */ }
+  };
+
+  const loadNATsForRouter = async (routerName: string, region: string) => {
+    try {
+      const res = await apiClient.get(`/compute/v1/projects/${currentProject}/regions/${region}/routers/${routerName}/nats`);
+      setNats(res.data.items || []);
+    } catch { /* silent */ }
+  };
+
+  const loadPeerings = async () => {
+    try {
+      const res = await apiClient.get(`/compute/v1/projects/${currentProject}/global/networks/default/peerings`);
+      setPeerings(res.data.items || []);
+    } catch { /* silent */ }
+  };
+
+  const handleCreateRouter = async () => {
+    if (!routerForm.name.trim()) return;
+    try {
+      setCreatingRouter(true);
+      await apiClient.post(`/compute/v1/projects/${currentProject}/regions/${routerForm.region}/routers`, routerForm);
+      setShowCreateRouter(false);
+      setRouterForm({ name: '', region: 'us-central1', network: 'default', bgp_asn: 64512 });
+      loadRouters();
+    } catch (err: any) {
+      alert(err.response?.data?.detail || 'Failed to create router');
+    } finally {
+      setCreatingRouter(false);
+    }
+  };
+
+  const handleDeleteRouter = async (router: CloudRouter) => {
+    if (!confirm(`Delete Cloud Router "${router.name}"?`)) return;
+    try {
+      await apiClient.delete(`/compute/v1/projects/${currentProject}/regions/${router.region}/routers/${router.name}`);
+      loadRouters();
+    } catch (err: any) {
+      alert(err.response?.data?.detail || 'Failed to delete router');
+    }
+  };
+
+  const handleCreateNAT = async () => {
+    if (!natForm.name.trim() || !natForm.router_name.trim()) return;
+    try {
+      setCreatingNAT(true);
+      await apiClient.post(
+        `/compute/v1/projects/${currentProject}/regions/${natForm.region}/routers/${natForm.router_name}/nats`,
+        { name: natForm.name, region: natForm.region, router_name: natForm.router_name, nat_ip_allocate_option: 'AUTO_ONLY', source_subnetwork_option: 'ALL_SUBNETWORKS_ALL_IP_RANGES' }
+      );
+      setShowCreateNAT(false);
+      setNatForm({ name: '', router_name: '', region: 'us-central1' });
+      loadNATsForRouter(natForm.router_name, natForm.region);
+    } catch (err: any) {
+      alert(err.response?.data?.detail || 'Failed to create NAT');
+    } finally {
+      setCreatingNAT(false);
+    }
+  };
+
+  const handleDeleteNAT = async (nat: CloudNAT) => {
+    if (!confirm(`Delete Cloud NAT "${nat.name}"?`)) return;
+    try {
+      await apiClient.delete(`/compute/v1/projects/${currentProject}/regions/${nat.region}/routers/${nat.router_name}/nats/${nat.name}`);
+      loadNATsForRouter(nat.router_name, nat.region);
+    } catch (err: any) {
+      alert(err.response?.data?.detail || 'Failed to delete NAT');
+    }
+  };
+
+  const handleAddPeering = async () => {
+    if (!peeringForm.name.trim() || !peeringForm.peer_network.trim()) return;
+    try {
+      setCreatingPeering(true);
+      await apiClient.post(
+        `/compute/v1/projects/${currentProject}/global/networks/${peeringForm.network}/addPeering`,
+        { name: peeringForm.name, network: peeringForm.network, peer_network: peeringForm.peer_network, exchange_subnet_routes: true }
+      );
+      setShowCreatePeering(false);
+      setPeeringForm({ name: '', network: 'default', peer_network: '' });
+      loadPeerings();
+    } catch (err: any) {
+      alert(err.response?.data?.detail || 'Failed to add peering');
+    } finally {
+      setCreatingPeering(false);
+    }
+  };
+
+  const handleRemovePeering = async (peering: VPCPeering) => {
+    if (!confirm(`Remove VPC peering "${peering.name}"?`)) return;
+    try {
+      await apiClient.post(
+        `/compute/v1/projects/${currentProject}/global/networks/${peering.network}/removePeering`,
+        { name: peering.name }
+      );
+      loadPeerings();
+    } catch (err: any) {
+      alert(err.response?.data?.detail || 'Failed to remove peering');
+    }
+  };
 
   const loadData = async () => {
     try {
@@ -221,12 +377,31 @@ const VPCDashboardPage = () => {
               <ArrowRight className="w-3 h-3 text-gray-400 group-hover:text-blue-600" />
             </Link>
           </div>
+
+          {/* Tab Navigation */}
+          <div className="flex gap-1 pt-4 border-t border-gray-200">
+            {([
+              { key: 'networks', label: 'Networks', icon: Network },
+              { key: 'routers', label: 'Cloud Routers', icon: Router },
+              { key: 'nat', label: 'Cloud NAT', icon: Globe },
+              { key: 'peering', label: 'VPC Peering', icon: Share2 },
+            ] as const).map(({ key, label, icon: Icon }) => (
+              <button key={key} onClick={() => setActiveTab(key)}
+                className={`flex items-center gap-2 px-4 py-2 rounded-lg text-[13px] font-medium transition-colors ${
+                  activeTab === key ? 'bg-blue-50 text-blue-700' : 'text-gray-600 hover:bg-gray-100'
+                }`}>
+                <Icon className="w-4 h-4" /> {label}
+              </button>
+            ))}
+          </div>
         </div>
       </div>
 
       {/* Main Content */}
       <div className="max-w-[1280px] mx-auto px-8 py-8">
-        {/* VPC Networks */}
+        {/* Networks Tab */}
+        {activeTab === 'networks' && (
+        <>
         <div className="mb-8">
           <h2 className="text-[16px] font-bold text-gray-900 mb-4">VPC Networks</h2>
           <div className="bg-white rounded-lg border border-gray-200 shadow-[0_1px_3px_rgba(0,0,0,0.07)]">
@@ -404,6 +579,252 @@ const VPCDashboardPage = () => {
                   </div>
                 ))}
               </div>
+            </div>
+          </div>
+        )}
+        </>
+        )} {/* end networks tab */}
+
+        {/* Cloud Routers Tab */}
+        {activeTab === 'routers' && (
+          <div className="mb-8">
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-[16px] font-bold text-gray-900">Cloud Routers</h2>
+              <button onClick={() => setShowCreateRouter(true)}
+                className="inline-flex items-center gap-2 px-3 h-9 bg-blue-600 text-white rounded-lg hover:bg-blue-700 text-[13px] font-medium">
+                <Plus className="w-4 h-4" /> Create Router
+              </button>
+            </div>
+
+            {showCreateRouter && (
+              <div className="bg-blue-50 border border-blue-200 rounded-xl p-4 mb-4">
+                <div className="grid grid-cols-2 gap-3 mb-3">
+                  <div>
+                    <label className="text-[12px] font-medium text-gray-700 block mb-1">Name</label>
+                    <input value={routerForm.name} onChange={e => setRouterForm(f => ({ ...f, name: e.target.value }))}
+                      placeholder="my-router" className="w-full px-3 py-2 text-[13px] border border-gray-300 rounded-lg focus:outline-none focus:border-blue-400" />
+                  </div>
+                  <div>
+                    <label className="text-[12px] font-medium text-gray-700 block mb-1">Network</label>
+                    <select value={routerForm.network} onChange={e => setRouterForm(f => ({ ...f, network: e.target.value }))}
+                      className="w-full px-3 py-2 text-[13px] border border-gray-300 rounded-lg focus:outline-none focus:border-blue-400">
+                      {networks.map(n => <option key={n.name} value={n.name}>{n.name}</option>)}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="text-[12px] font-medium text-gray-700 block mb-1">Region</label>
+                    <select value={routerForm.region} onChange={e => setRouterForm(f => ({ ...f, region: e.target.value }))}
+                      className="w-full px-3 py-2 text-[13px] border border-gray-300 rounded-lg focus:outline-none focus:border-blue-400">
+                      {['us-central1','us-east1','us-west1','europe-west1'].map(r => <option key={r} value={r}>{r}</option>)}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="text-[12px] font-medium text-gray-700 block mb-1">BGP ASN</label>
+                    <input value={routerForm.bgp_asn} onChange={e => setRouterForm(f => ({ ...f, bgp_asn: parseInt(e.target.value) || 64512 }))}
+                      type="number" className="w-full px-3 py-2 text-[13px] border border-gray-300 rounded-lg focus:outline-none focus:border-blue-400" />
+                  </div>
+                </div>
+                <div className="flex gap-2">
+                  <button onClick={handleCreateRouter} disabled={creatingRouter || !routerForm.name}
+                    className="px-4 py-2 bg-blue-600 text-white rounded-lg text-[13px] font-medium hover:bg-blue-700 disabled:opacity-50">
+                    {creatingRouter ? 'Creating...' : 'Create'}
+                  </button>
+                  <button onClick={() => setShowCreateRouter(false)} className="px-4 py-2 text-gray-600 border border-gray-300 rounded-lg text-[13px] hover:bg-white">Cancel</button>
+                </div>
+              </div>
+            )}
+
+            <div className="bg-white rounded-lg border border-gray-200 shadow-sm">
+              {routers.length === 0 ? (
+                <div className="p-10 text-center">
+                  <Router className="w-8 h-8 text-gray-300 mx-auto mb-2" />
+                  <p className="text-[13px] text-gray-500">No Cloud Routers created yet</p>
+                </div>
+              ) : (
+                <table className="w-full">
+                  <thead><tr className="bg-gray-50 border-b border-gray-200">
+                    {['Name','Region','Network','BGP ASN',''].map(h => (
+                      <th key={h} className="px-4 py-3 text-left text-[12px] font-semibold text-gray-600">{h}</th>
+                    ))}
+                  </tr></thead>
+                  <tbody className="divide-y divide-gray-100">
+                    {routers.map(r => (
+                      <tr key={r.id} className="hover:bg-gray-50">
+                        <td className="px-4 py-3 text-[13px] font-medium text-gray-900">{r.name}</td>
+                        <td className="px-4 py-3 text-[13px] text-gray-600">{r.region}</td>
+                        <td className="px-4 py-3 text-[13px] text-gray-600">{r.network}</td>
+                        <td className="px-4 py-3 text-[13px] font-mono text-gray-700">AS{r.bgp_asn || 64512}</td>
+                        <td className="px-4 py-3 text-right">
+                          <button onClick={() => handleDeleteRouter(r)} className="p-1.5 text-red-400 hover:text-red-600 hover:bg-red-50 rounded">
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* Cloud NAT Tab */}
+        {activeTab === 'nat' && (
+          <div className="mb-8">
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-[16px] font-bold text-gray-900">Cloud NAT</h2>
+              <button onClick={() => setShowCreateNAT(true)}
+                className="inline-flex items-center gap-2 px-3 h-9 bg-blue-600 text-white rounded-lg hover:bg-blue-700 text-[13px] font-medium">
+                <Plus className="w-4 h-4" /> Create NAT Gateway
+              </button>
+            </div>
+
+            {showCreateNAT && (
+              <div className="bg-blue-50 border border-blue-200 rounded-xl p-4 mb-4">
+                <div className="grid grid-cols-2 gap-3 mb-3">
+                  <div>
+                    <label className="text-[12px] font-medium text-gray-700 block mb-1">NAT Name</label>
+                    <input value={natForm.name} onChange={e => setNatForm(f => ({ ...f, name: e.target.value }))}
+                      placeholder="my-nat-gateway" className="w-full px-3 py-2 text-[13px] border border-gray-300 rounded-lg focus:outline-none focus:border-blue-400" />
+                  </div>
+                  <div>
+                    <label className="text-[12px] font-medium text-gray-700 block mb-1">Cloud Router</label>
+                    <select value={natForm.router_name} onChange={e => setNatForm(f => ({ ...f, router_name: e.target.value }))}
+                      className="w-full px-3 py-2 text-[13px] border border-gray-300 rounded-lg focus:outline-none focus:border-blue-400">
+                      <option value="">Select router...</option>
+                      {routers.map(r => <option key={r.name} value={r.name}>{r.name} ({r.region})</option>)}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="text-[12px] font-medium text-gray-700 block mb-1">Region</label>
+                    <select value={natForm.region} onChange={e => setNatForm(f => ({ ...f, region: e.target.value }))}
+                      className="w-full px-3 py-2 text-[13px] border border-gray-300 rounded-lg focus:outline-none focus:border-blue-400">
+                      {['us-central1','us-east1','us-west1','europe-west1'].map(r => <option key={r} value={r}>{r}</option>)}
+                    </select>
+                  </div>
+                </div>
+                <div className="flex gap-2">
+                  <button onClick={handleCreateNAT} disabled={creatingNAT || !natForm.name || !natForm.router_name}
+                    className="px-4 py-2 bg-blue-600 text-white rounded-lg text-[13px] font-medium hover:bg-blue-700 disabled:opacity-50">
+                    {creatingNAT ? 'Creating...' : 'Create NAT Gateway'}
+                  </button>
+                  <button onClick={() => setShowCreateNAT(false)} className="px-4 py-2 text-gray-600 border border-gray-300 rounded-lg text-[13px] hover:bg-white">Cancel</button>
+                </div>
+              </div>
+            )}
+
+            <div className="bg-white rounded-lg border border-gray-200 shadow-sm">
+              {nats.length === 0 ? (
+                <div className="p-10 text-center">
+                  <Globe className="w-8 h-8 text-gray-300 mx-auto mb-2" />
+                  <p className="text-[13px] text-gray-500">No Cloud NAT gateways configured</p>
+                  <p className="text-[12px] text-gray-400 mt-1">Select a Cloud Router above to create a NAT gateway, or create a router first</p>
+                </div>
+              ) : (
+                <table className="w-full">
+                  <thead><tr className="bg-gray-50 border-b border-gray-200">
+                    {['Name','Router','Region','NAT IP Allocation',''].map(h => (
+                      <th key={h} className="px-4 py-3 text-left text-[12px] font-semibold text-gray-600">{h}</th>
+                    ))}
+                  </tr></thead>
+                  <tbody className="divide-y divide-gray-100">
+                    {nats.map(n => (
+                      <tr key={n.id} className="hover:bg-gray-50">
+                        <td className="px-4 py-3 text-[13px] font-medium text-gray-900">{n.name}</td>
+                        <td className="px-4 py-3 text-[13px] text-blue-600">{n.router_name}</td>
+                        <td className="px-4 py-3 text-[13px] text-gray-600">{n.region}</td>
+                        <td className="px-4 py-3 text-[13px] text-gray-600">{n.nat_ip_allocate_option || 'AUTO_ONLY'}</td>
+                        <td className="px-4 py-3 text-right">
+                          <button onClick={() => handleDeleteNAT(n)} className="p-1.5 text-red-400 hover:text-red-600 hover:bg-red-50 rounded">
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* VPC Peering Tab */}
+        {activeTab === 'peering' && (
+          <div className="mb-8">
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-[16px] font-bold text-gray-900">VPC Peering</h2>
+              <button onClick={() => setShowCreatePeering(true)}
+                className="inline-flex items-center gap-2 px-3 h-9 bg-blue-600 text-white rounded-lg hover:bg-blue-700 text-[13px] font-medium">
+                <Plus className="w-4 h-4" /> Add Peering
+              </button>
+            </div>
+
+            {showCreatePeering && (
+              <div className="bg-blue-50 border border-blue-200 rounded-xl p-4 mb-4">
+                <div className="grid grid-cols-2 gap-3 mb-3">
+                  <div>
+                    <label className="text-[12px] font-medium text-gray-700 block mb-1">Peering Name</label>
+                    <input value={peeringForm.name} onChange={e => setPeeringForm(f => ({ ...f, name: e.target.value }))}
+                      placeholder="peer-to-project-b" className="w-full px-3 py-2 text-[13px] border border-gray-300 rounded-lg focus:outline-none focus:border-blue-400" />
+                  </div>
+                  <div>
+                    <label className="text-[12px] font-medium text-gray-700 block mb-1">Your Network</label>
+                    <select value={peeringForm.network} onChange={e => setPeeringForm(f => ({ ...f, network: e.target.value }))}
+                      className="w-full px-3 py-2 text-[13px] border border-gray-300 rounded-lg focus:outline-none focus:border-blue-400">
+                      {networks.map(n => <option key={n.name} value={n.name}>{n.name}</option>)}
+                    </select>
+                  </div>
+                  <div className="col-span-2">
+                    <label className="text-[12px] font-medium text-gray-700 block mb-1">Peer Network (projects/PROJECT/global/networks/NETWORK)</label>
+                    <input value={peeringForm.peer_network} onChange={e => setPeeringForm(f => ({ ...f, peer_network: e.target.value }))}
+                      placeholder="projects/peer-project/global/networks/default"
+                      className="w-full px-3 py-2 text-[13px] border border-gray-300 rounded-lg focus:outline-none focus:border-blue-400" />
+                  </div>
+                </div>
+                <div className="flex gap-2">
+                  <button onClick={handleAddPeering} disabled={creatingPeering || !peeringForm.name || !peeringForm.peer_network}
+                    className="px-4 py-2 bg-blue-600 text-white rounded-lg text-[13px] font-medium hover:bg-blue-700 disabled:opacity-50">
+                    {creatingPeering ? 'Adding...' : 'Add Peering'}
+                  </button>
+                  <button onClick={() => setShowCreatePeering(false)} className="px-4 py-2 text-gray-600 border border-gray-300 rounded-lg text-[13px] hover:bg-white">Cancel</button>
+                </div>
+              </div>
+            )}
+
+            <div className="bg-white rounded-lg border border-gray-200 shadow-sm">
+              {peerings.length === 0 ? (
+                <div className="p-10 text-center">
+                  <Share2 className="w-8 h-8 text-gray-300 mx-auto mb-2" />
+                  <p className="text-[13px] text-gray-500">No VPC peering connections</p>
+                </div>
+              ) : (
+                <table className="w-full">
+                  <thead><tr className="bg-gray-50 border-b border-gray-200">
+                    {['Name','Network','Peer Network','State',''].map(h => (
+                      <th key={h} className="px-4 py-3 text-left text-[12px] font-semibold text-gray-600">{h}</th>
+                    ))}
+                  </tr></thead>
+                  <tbody className="divide-y divide-gray-100">
+                    {peerings.map(p => (
+                      <tr key={p.id} className="hover:bg-gray-50">
+                        <td className="px-4 py-3 text-[13px] font-medium text-gray-900">{p.name}</td>
+                        <td className="px-4 py-3 text-[13px] text-gray-600">{p.network}</td>
+                        <td className="px-4 py-3 text-[13px] font-mono text-gray-600 text-xs">{p.peer_network}</td>
+                        <td className="px-4 py-3">
+                          <span className={`inline-flex px-2 py-0.5 rounded text-[11px] font-medium ${
+                            p.state === 'ACTIVE' ? 'bg-green-100 text-green-700' : 'bg-yellow-100 text-yellow-700'
+                          }`}>{p.state}</span>
+                        </td>
+                        <td className="px-4 py-3 text-right">
+                          <button onClick={() => handleRemovePeering(p)} className="p-1.5 text-red-400 hover:text-red-600 hover:bg-red-50 rounded">
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              )}
             </div>
           </div>
         )}

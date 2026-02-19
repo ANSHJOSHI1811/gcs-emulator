@@ -92,6 +92,36 @@ export interface GKENode {
   containerRuntime: string;
 }
 
+export interface Pod {
+  name: string;
+  namespace: string;
+  status: string;
+  ready: string;
+  restarts: number;
+  node: string;
+  creationTimestamp: string;
+  labels: Record<string, string>;
+}
+
+export interface Deployment {
+  name: string;
+  namespace: string;
+  ready: string;
+  replicas: number;
+  readyReplicas: number;
+  availableReplicas: number;
+  creationTimestamp: string;
+  labels: Record<string, string>;
+}
+
+export interface StatefulSet {
+  name: string;
+  namespace: string;
+  ready: string;
+  replicas: number;
+  creationTimestamp: string;
+}
+
 export interface ServerConfig {
   defaultClusterVersion: string;
   validMasterVersions: string[];
@@ -358,4 +388,19 @@ export async function deleteAddon(
   await apiClient.delete(
     `/container/v1/projects/${project}/locations/${location}/clusters/${clusterName}/addons/${addonName}`
   );
+}
+
+// ─── Workloads API ────────────────────────────────────────────────────────────
+
+export async function listWorkloads(
+  location: string,
+  clusterName: string,
+  namespace = 'all'
+): Promise<{ pods: Pod[]; deployments: Deployment[]; statefulSets: StatefulSet[] }> {
+  const project = getCurrentProject();
+  const res = await apiClient.get<{ pods: Pod[]; deployments: Deployment[]; statefulSets: StatefulSet[] }>(
+    `/container/v1/projects/${project}/locations/${location}/clusters/${clusterName}/workloads`,
+    { params: { namespace } }
+  );
+  return res.data;
 }

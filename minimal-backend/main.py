@@ -1,7 +1,12 @@
 """Main FastAPI application"""
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from api import compute, projects, vpc, storage, iam, firewall, routes, gke
+from services.compute.router import router as compute_router
+from services.vpc.router import router as vpc_router
+from services.iam.router import router as iam_router
+from services.gke.router import router as gke_router
+from services.projects.router import router as projects_router
+from api import storage  # storage remains in api/ (stable, 1100+ lines)
 import os
 
 app = FastAPI(
@@ -27,24 +32,22 @@ def health():
     return {"status": "healthy"}
 
 # Register routers with GCP API paths
-app.include_router(compute.router, prefix="/compute/v1", tags=["Compute Engine"])
-app.include_router(vpc.router, prefix="/compute/v1", tags=["VPC Networks"])
-app.include_router(firewall.router, prefix="/compute/v1", tags=["Firewall Rules"])
-app.include_router(routes.router, tags=["VPC Routes"])
-app.include_router(projects.router, prefix="/cloudresourcemanager/v1", tags=["Projects"])
-app.include_router(iam.router, prefix="/v1", tags=["IAM & Admin"])
+app.include_router(compute_router, prefix="/compute/v1", tags=["Compute Engine"])
+app.include_router(vpc_router, prefix="/compute/v1", tags=["VPC Networks"])
+app.include_router(projects_router, prefix="/cloudresourcemanager/v1", tags=["Projects"])
+app.include_router(iam_router, prefix="/v1", tags=["IAM & Admin"])
 
 # Cloud Storage (in-memory implementation)
 app.include_router(storage.router, tags=["Cloud Storage"])
 
 # GKE — registered at both /container/v1 (internal UI) and /v1 (gcloud CLI compatibility)
-app.include_router(gke.router, prefix="/container/v1", tags=["GKE"])
-app.include_router(gke.router, prefix="/v1", tags=["GKE (gcloud CLI)"])
+app.include_router(gke_router, prefix="/container/v1", tags=["GKE"])
+app.include_router(gke_router, prefix="/v1", tags=["GKE (gcloud CLI)"])
 
 
 def init_zones_and_machine_types(db):
     """Initialize zones and machine types if they don't exist"""
-    from database import Zone, MachineType
+    from core.database import Zone, MachineType
     
     # Check if zones already exist
     if db.query(Zone).count() > 0:
@@ -96,8 +99,8 @@ def init_zones_and_machine_types(db):
 @app.on_event("startup")
 async def startup_event():
     """Initialize database tables and default networks"""
-    from database import SessionLocal, Project, Base, engine
-    from api.vpc import ensure_default_network
+    from core.database import SessionLocal, Project, Base, engine
+    from services.vpc.router import ensure_default_network
     
     # Create all tables
     Base.metadata.create_all(bind=engine)
