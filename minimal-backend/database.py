@@ -1,5 +1,5 @@
 """Database models and connection"""
-from sqlalchemy import create_engine, Column, String, DateTime, JSON, Boolean, Integer, LargeBinary
+from sqlalchemy import create_engine, Column, String, DateTime, JSON, Boolean, Integer, LargeBinary, text
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
 from datetime import datetime
@@ -208,8 +208,130 @@ class ServiceAccount(Base):
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
 
+class GKECluster(Base):
+    """GKE Cluster — backed by a k3s Docker container"""
+    __tablename__ = "gke_clusters"
+
+    id             = Column(Integer, primary_key=True, autoincrement=True)
+    name           = Column(String, nullable=False)
+    project_id     = Column(String, nullable=False)
+    location       = Column(String, nullable=False)           # zone or region, e.g. us-central1-a
+    status         = Column(String, default="PROVISIONING")   # PROVISIONING|RUNNING|RECONCILING|STOPPING|STOPPED|ERROR
+    master_version = Column(String, default="1.28.0")
+    node_count     = Column(Integer, default=3)
+    machine_type   = Column(String, default="e2-medium")
+    disk_size_gb   = Column(Integer, default=100)
+    network        = Column(String, default="default")
+    subnetwork     = Column(String, default="default")
+    container_id   = Column(String)                           # Docker container ID of k3s control plane
+    endpoint       = Column(String)                           # Bridge IP of k3s container
+    kubeconfig     = Column(String)                           # Raw kubeconfig YAML
+    description    = Column(String)
+    # ── GCP-aligned fields (Sprint 2) ──
+    cluster_type          = Column(String, default="STANDARD")          # STANDARD | AUTOPILOT
+    release_channel       = Column(String, default="REGULAR")           # RAPID | REGULAR | STABLE | NONE
+    cluster_ipv4_cidr     = Column(String, default="/17")               # clusterIpv4Cidr
+    services_ipv4_cidr    = Column(String, default="/20")               # servicesIpv4Cidr
+    enable_private_nodes  = Column(Boolean, default=False)              # privateClusterConfig
+    logging_service       = Column(String, default="logging.googleapis.com/kubernetes")
+    monitoring_service    = Column(String, default="monitoring.googleapis.com/kubernetes")
+    binary_authorization  = Column(String, default="DISABLED")          # binaryAuthorization.evaluationMode
+    api_server_port       = Column(Integer)                             # host port for multi-cluster kubectl
+    certificate_authority = Column(String)                              # base64 CA cert
+    resource_labels       = Column(JSON, default=dict)                  # GCP resource labels
+    created_at     = Column(DateTime, default=datetime.utcnow)
+    updated_at     = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
+class GKENodePool(Base):
+    """GKE Node Pool within a cluster"""
+    __tablename__ = "gke_node_pools"
+
+    id           = Column(Integer, primary_key=True, autoincrement=True)
+    name         = Column(String, nullable=False)
+    cluster_name = Column(String, nullable=False)             # FK → gke_clusters.name
+    project_id   = Column(String, nullable=False)
+    location     = Column(String, nullable=False)
+    status       = Column(String, default="PROVISIONING")     # same states as cluster
+    node_count   = Column(Integer, default=3)
+    machine_type = Column(String, default="e2-medium")
+    disk_size_gb = Column(Integer, default=100)
+    container_ids = Column(JSON, default=list)
+    # ── GCP-aligned fields (Sprint 2) ──
+    min_node_count         = Column(Integer, default=1)       # autoscaling.minNodeCount
+    max_node_count         = Column(Integer, default=3)       # autoscaling.maxNodeCount
+    autoscaling_enabled    = Column(Boolean, default=False)   # autoscaling.enabled
+    preemptible            = Column(Boolean, default=False)   # config.preemptible
+    spot                   = Column(Boolean, default=False)   # config.spot
+    image_type             = Column(String, default="COS_CONTAINERD")  # config.imageType
+    management_auto_repair  = Column(Boolean, default=True)   # management.autoRepair
+    management_auto_upgrade = Column(Boolean, default=True)   # management.autoUpgrade
+    created_at   = Column(DateTime, default=datetime.utcnow)
+    updated_at   = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
+class GKEAddon(Base):
+    """GKE Addon installed on a cluster (vpc-cni, HttpLoadBalancing, etc.)"""
+    __tablename__ = "gke_addons"
+
+    id             = Column(Integer, primary_key=True, autoincrement=True)
+    name           = Column(String, nullable=False)           # e.g. HttpLoadBalancing
+    cluster_name   = Column(String, nullable=False)
+    project_id     = Column(String, nullable=False)
+    location       = Column(String, nullable=False)
+    status         = Column(String, default="ENABLED")        # ENABLED | DISABLED
+    version        = Column(String, default="")
+    created_at     = Column(DateTime, default=datetime.utcnow)
+    updated_at     = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
 # Create any missing tables (new models)
 Base.metadata.create_all(engine)
+
+
+def _run_migrations() -> None:
+    """Add columns introduced in Sprint 2 to pre-existing tables.
+    Safe to run multiple times — silently skips columns that already exist.
+    """
+    new_cluster_cols = [
+        ("cluster_type",         "VARCHAR DEFAULT 'STANDARD'"),
+        ("release_channel",      "VARCHAR DEFAULT 'REGULAR'"),
+        ("cluster_ipv4_cidr",    "VARCHAR DEFAULT '/17'"),
+        ("services_ipv4_cidr",   "VARCHAR DEFAULT '/20'"),
+        ("enable_private_nodes", "BOOLEAN DEFAULT 0"),
+        ("logging_service",      "VARCHAR DEFAULT 'logging.googleapis.com/kubernetes'"),
+        ("monitoring_service",   "VARCHAR DEFAULT 'monitoring.googleapis.com/kubernetes'"),
+        ("binary_authorization", "VARCHAR DEFAULT 'DISABLED'"),
+        ("api_server_port",      "INTEGER"),
+        ("certificate_authority","VARCHAR"),
+        ("resource_labels",      "JSON DEFAULT '{}'"),
+    ]
+    new_nodepool_cols = [
+        ("min_node_count",          "INTEGER DEFAULT 1"),
+        ("max_node_count",          "INTEGER DEFAULT 3"),
+        ("autoscaling_enabled",     "BOOLEAN DEFAULT 0"),
+        ("preemptible",             "BOOLEAN DEFAULT 0"),
+        ("spot",                    "BOOLEAN DEFAULT 0"),
+        ("image_type",              "VARCHAR DEFAULT 'COS_CONTAINERD'"),
+        ("management_auto_repair",  "BOOLEAN DEFAULT 1"),
+        ("management_auto_upgrade", "BOOLEAN DEFAULT 1"),
+    ]
+    with engine.connect() as conn:
+        for col, typ in new_cluster_cols:
+            try:
+                conn.execute(text(f"ALTER TABLE gke_clusters ADD COLUMN {col} {typ}"))
+                conn.commit()
+            except Exception:
+                pass
+        for col, typ in new_nodepool_cols:
+            try:
+                conn.execute(text(f"ALTER TABLE gke_node_pools ADD COLUMN {col} {typ}"))
+                conn.commit()
+            except Exception:
+                pass
+
+
+_run_migrations()
 
 def get_db():
     """Database session"""

@@ -1,7 +1,7 @@
 """Main FastAPI application"""
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from api import compute, projects, vpc, storage, iam, firewall, routes
+from api import compute, projects, vpc, storage, iam, firewall, routes, gke
 import os
 
 app = FastAPI(
@@ -36,6 +36,10 @@ app.include_router(iam.router, prefix="/v1", tags=["IAM & Admin"])
 
 # Cloud Storage (in-memory implementation)
 app.include_router(storage.router, tags=["Cloud Storage"])
+
+# GKE — registered at both /container/v1 (internal UI) and /v1 (gcloud CLI compatibility)
+app.include_router(gke.router, prefix="/container/v1", tags=["GKE"])
+app.include_router(gke.router, prefix="/v1", tags=["GKE (gcloud CLI)"])
 
 
 def init_zones_and_machine_types(db):

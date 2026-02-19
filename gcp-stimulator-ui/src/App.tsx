@@ -15,6 +15,9 @@ import SettingsPage from './pages/SettingsPage';
 import IAMDashboardPage from './pages/IAMDashboardPage';
 import ComputeDashboardPage from './pages/ComputeDashboardPage';
 import CreateInstancePage from './pages/CreateInstancePage';
+import GKEDashboardPage from './pages/GKEDashboardPage';
+import CreateClusterPage from './pages/CreateClusterPage';
+import GKEClusterDetailPage from './pages/GKEClusterDetailPage';
 import VPCDashboardPage from './pages/VPCDashboardPage';
 import NetworksPage from './pages/NetworksPage';
 import SubnetsPage from './pages/SubnetsPage';
@@ -53,6 +56,15 @@ function App() {
               <Route index element={<ComputeDashboardPage />} />
               <Route path="instances" element={<ComputeDashboardPage />} />
               <Route path="instances/create" element={<CreateInstancePage />} />
+            </Route>
+
+            {/* GKE Service Routes */}
+            <Route path="/services/gke">
+              <Route index element={<GKEDashboardPage />} />
+              <Route path="clusters" element={<GKEDashboardPage />} />
+              <Route path="clusters/create" element={<CreateClusterPage />} />
+              <Route path="clusters/:clusterName" element={<GKEClusterDetailPage />} />
+              <Route path="node-pools" element={<GKEDashboardPage />} />
             </Route>
 
             {/* VPC Network Service Routes */}

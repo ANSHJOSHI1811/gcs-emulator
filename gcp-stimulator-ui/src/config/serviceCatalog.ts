@@ -1,4 +1,4 @@
-import { LucideIcon, HardDrive, Cpu, Network, Shield, MessageSquare, Activity, Globe, Lock, Route, TableIcon } from 'lucide-react';
+import { LucideIcon, HardDrive, Cpu, Network, Shield, MessageSquare, Activity, Globe, Lock, Route, TableIcon, Box, Server, Layers } from 'lucide-react';
 
 export interface ServiceLink {
   label: string;
@@ -95,6 +95,24 @@ export const serviceCategories: ServiceCategory[] = [
           { label: 'Dashboard', path: '/services/iam' },
           { label: 'Service Accounts', path: '/services/iam/service-accounts', icon: Shield },
           { label: 'IAM Policies', path: '/services/iam/policies' },
+        ],
+      },
+    ],
+  },
+  {
+    id: 'containers',
+    name: 'Containers',
+    services: [
+      {
+        id: 'gke',
+        name: 'Kubernetes Engine',
+        description: 'Managed Kubernetes service for containerised workloads',
+        icon: Box,
+        category: 'Containers',
+        enabled: true,
+        sidebarLinks: [
+          { label: 'Clusters', path: '/services/gke/clusters', icon: Server },
+          { label: 'Node Pools', path: '/services/gke/node-pools', icon: Layers },
         ],
       },
     ],
