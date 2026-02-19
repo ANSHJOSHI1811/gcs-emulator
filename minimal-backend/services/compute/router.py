@@ -18,7 +18,7 @@ from core.database import (
 )
 from docker_manager import (
     create_container, stop_container, start_container,
-    delete_container, get_container_status,
+    delete_container, get_container_status, ip_in_docker_network,
 )
 from ip_manager import get_ip_at_offset
 
@@ -150,6 +150,39 @@ def wait_operation(project: str, zone: str, operation: str):
 
 
 # ────────────────────────────────────────────────────────
+# Project & Zone validation (for gcloud CLI)
+# ────────────────────────────────────────────────────────
+
+@router.get("/projects/{project}")
+def get_project(project: str):
+    """Return project info - gcloud CLI uses this for validation."""
+    return {
+        "kind": "compute#project",
+        "id": project,
+        "name": project,
+        "selfLink": f"https://www.googleapis.com/compute/v1/projects/{project}",
+        "defaultServiceAccount": f"{project}@developer.gserviceaccount.com",
+        "commonInstanceMetadata": {"kind": "compute#metadata", "fingerprint": ""},
+    }
+
+
+@router.get("/projects/{project}/zones/{zone}")
+def get_zone(project: str, zone: str, db: Session = Depends(get_db)):
+    """Return zone info - gcloud CLI uses this for validation."""
+    z = db.query(Zone).filter_by(name=zone).first()
+    if not z:
+        raise HTTPException(status_code=404, detail=f"Zone {zone} not found")
+    return {
+        "kind": "compute#zone",
+        "name": z.name,
+        "region": z.region,
+        "status": z.status,
+        "description": z.description or "",
+        "selfLink": f"https://www.googleapis.com/compute/v1/projects/{project}/zones/{z.name}",
+    }
+
+
+# ────────────────────────────────────────────────────────
 # Zones & Machine Types
 # ────────────────────────────────────────────────────────
 
@@ -200,6 +233,18 @@ def list_instances(project: str, zone: str, db: Session = Depends(get_db)):
     }
 
 
+@router.get("/projects/{project}/aggregated/instances")
+def list_instances_aggregated(project: str, db: Session = Depends(get_db)):
+    """Return all instances grouped by zone (aggregated list) — used by gcloud."""
+    instances = db.query(Instance).filter_by(project_id=project).all()
+    items: dict = {}
+    for i in instances:
+        key = f"zones/{i.zone}"
+        items.setdefault(key, {"instances": []})
+        items[key]["instances"].append(_instance_resource(i, project))
+    return {"kind": "compute#instanceAggregatedList", "items": items}
+
+
 @router.get("/projects/{project}/zones/{zone}/instances/{instance_name}")
 def get_instance(project: str, zone: str, instance_name: str, db: Session = Depends(get_db)):
     i = db.query(Instance).filter_by(project_id=project, zone=zone, name=instance_name).first()
@@ -231,7 +276,13 @@ async def create_instance(project: str, zone: str, body: dict, db: Session = Dep
         if sub:
             subnet_name = sub.split("/")[-1]
 
-    subnet_record = db.query(Subnet).filter_by(name=subnet_name).first()
+    # Resolve subnet by name or default to the subnet in the zone's region
+    region = zone.rsplit('-', 1)[0]
+    if subnet_name == "default":
+        subnet_record = db.query(Subnet).filter_by(network=network_name, region=region).first()
+    else:
+        subnet_record = db.query(Subnet).filter_by(name=subnet_name).first()
+
     if not subnet_record:
         raise HTTPException(404, f"Subnet '{subnet_name}' not found")
 
@@ -242,6 +293,10 @@ async def create_instance(project: str, zone: str, body: dict, db: Session = Dep
     net_record = db.query(Network).filter_by(project_id=project, name=network_name).first()
     if not net_record:
         raise HTTPException(404, f"Network '{network_name}' not found")
+
+    # Validate allocated IP is within Docker network IPAM to avoid Docker API errors
+    if not ip_in_docker_network(net_record.docker_network_name, allocated_ip):
+        raise HTTPException(400, f"Allocated IP {allocated_ip} is not contained in Docker network '{net_record.docker_network_name}' IPAM pools")
 
     container = create_container(name, network=net_record.docker_network_name, ip_address=allocated_ip)
     subnet_record.next_available_ip += 1

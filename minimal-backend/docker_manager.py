@@ -39,16 +39,19 @@ def create_docker_network_with_cidr(name: str, cidr: str, project: str) -> str:
     ipam_config = docker.types.IPAMConfig(pool_configs=[ipam_pool])
     
     # Create network
-    network = client.networks.create(
-        docker_network_name,
-        driver="bridge",
-        ipam=ipam_config,
-        labels={
-            "gcp-project": project,
-            "gcp-network": name,
-            "gcp-cidr": cidr
-        }
-    )
+    try:
+        network = client.networks.create(
+            docker_network_name,
+            driver="bridge",
+            ipam=ipam_config,
+            labels={
+                "gcp-project": project,
+                "gcp-network": name,
+                "gcp-cidr": cidr
+            }
+        )
+    except docker.errors.APIError as e:
+        raise RuntimeError(f"Docker network create error: {e}")
     
     print(f"✓ Created Docker network {docker_network_name} with CIDR {cidr}, gateway {gateway}")
     return network.id
@@ -73,6 +76,36 @@ def create_default_network():
             ipam=ipam_config
         )
 
+
+def ip_in_docker_network(network_name: str, ip_address: str) -> bool:
+    """Return True if the IPv4 address belongs to any IPAM pool of the Docker network."""
+    try:
+        net = client.networks.get(network_name)
+    except Exception:
+        # If network can't be found, default network contains 10.128.0.0/20
+        try:
+            ip = ipaddress.ip_address(ip_address)
+            return ip in ipaddress.ip_network("10.128.0.0/20")
+        except Exception:
+            return False
+
+    configs = net.attrs.get("IPAM", {}).get("Config", []) or []
+    try:
+        ip = ipaddress.ip_address(ip_address)
+    except Exception:
+        return False
+
+    for c in configs:
+        sub = c.get("Subnet") or c.get("subnet")
+        if not sub:
+            continue
+        try:
+            if ip in ipaddress.ip_network(sub):
+                return True
+        except Exception:
+            continue
+    return False
+
 def create_container(name: str, network: str = "gcp-default", image: str = "ubuntu:22.04", ip_address: Optional[str] = None):
     """
     Create Docker container for VM instance with optional static IP assignment
@@ -86,15 +119,27 @@ def create_container(name: str, network: str = "gcp-default", image: str = "ubun
     Returns: {"container_id": str, "container_name": str, "internal_ip": str}
     """
     container_name = f"gcp-vm-{name}"
+
+    # Prevent accidental reuse of an existing container name
+    try:
+        existing = client.containers.get(container_name)
+        raise RuntimeError(f"Container name '{container_name}' already in use (id={existing.id[:12]})")
+    except docker.errors.NotFound:
+        pass
     
     # Ensure network exists
     try:
         net = client.networks.get(network)
-    except:
+    except Exception:
         net = create_default_network()
     
     # Create container WITHOUT attaching to network yet (if we need specific IP)
     if ip_address:
+        # Validate requested IP is inside the Docker network's IPAM pools
+        if not ip_in_docker_network(net.name, ip_address):
+            configs = net.attrs.get("IPAM", {}).get("Config", []) or []
+            pools = [c.get("Subnet") or c.get("subnet") for c in configs if c.get("Subnet") or c.get("subnet")]
+            raise RuntimeError(f"Requested IP {ip_address} is not contained in Docker network '{net.name}' subnets: {pools}")
         container = client.containers.run(
             image,
             name=container_name,
@@ -105,21 +150,32 @@ def create_container(name: str, network: str = "gcp-default", image: str = "ubun
         )
         
         # Connect to network with specific IP
-        net.connect(container, ipv4_address=ip_address)
+        try:
+            net.connect(container, ipv4_address=ip_address)
+        except docker.errors.APIError as e:
+            # Clean up the created container if connect fails
+            try:
+                container.remove(force=True)
+            except Exception:
+                pass
+            raise RuntimeError(f"Failed to connect container to network: {e}")
         print(f"✓ Assigned IP {ip_address} to container {container_name}")
         
         container.reload()
         final_ip = ip_address
     else:
         # Create with auto-assigned IP
-        container = client.containers.run(
-            image,
-            name=container_name,
-            command="sleep infinity",
-            detach=True,
-            network=network,
-            hostname=name
-        )
+        try:
+            container = client.containers.run(
+                image,
+                name=container_name,
+                command="sleep infinity",
+                detach=True,
+                network=network,
+                hostname=name
+            )
+        except docker.errors.APIError as e:
+            raise RuntimeError(f"Failed to create container with auto-assigned IP: {e}")
         
         # Get auto-assigned IP
         container.reload()

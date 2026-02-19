@@ -138,13 +138,26 @@ def _create_subnet_route(db, project, network_name, subnet_name, subnet_cidr):
 
 def ensure_default_network(db: Session, project: str):
     """Bootstrap default VPC + subnet if missing."""
+    from docker_manager import create_docker_network_with_cidr
+    
     default = db.query(Network).filter_by(project_id=project, name="default").first()
     if not default:
+        cidr_range = "10.128.0.0/16"
+        docker_net_name = f"gcp-vpc-{project}-default"
+        
+        # Create Docker network
+        try:
+            create_docker_network_with_cidr("default", cidr_range, project)
+        except Exception as e:
+            print(f"Warning: Failed to create Docker network for default: {e}")
+            # Fall back to default bridge if Docker network creation fails
+            docker_net_name = "gcp-default"
+        
         default = Network(
             name="default", project_id=project,
-            docker_network_name="bridge",
+            docker_network_name=docker_net_name,
             auto_create_subnetworks=True,
-            cidr_range="10.128.0.0/16",
+            cidr_range=cidr_range,
         )
         db.add(default)
         db.commit()
