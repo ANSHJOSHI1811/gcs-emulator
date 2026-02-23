@@ -70,6 +70,13 @@ const ComputeDashboardPage = () => {
   const getExternalIp = (instance: Instance) => instance.networkInterfaces?.[0]?.accessConfigs?.[0]?.natIP || '-';
   const getNetworkName = (instance: Instance) => instance.networkInterfaces?.[0]?.network?.split('/').pop() || 'default';
   const getSubnetName = (instance: Instance) => instance.networkInterfaces?.[0]?.subnetwork?.split('/').pop() || '-';
+
+  const getDisplayedTags = () => {
+    if (editingTags) return pendingTags;
+    if (!selectedInstance) return [];
+    const t = (selectedInstance as any).tags;
+    return Array.isArray(t) ? t : (t?.items || []);
+  };
   
   const getMachineTypeDetails = (machineType: string) => {
     const type = extractName(machineType);
@@ -160,7 +167,11 @@ const ComputeDashboardPage = () => {
   const openInstanceModal = (instance: Instance) => {
     setSelectedInstance(instance);
     setActiveTab('overview');
-    setPendingTags(instance.tags || []);
+    // normalize tags: backend may return { items: [...] } or an array
+    const initialTags = Array.isArray((instance as any).tags)
+      ? (instance as any).tags
+      : (instance as any).tags?.items || [];
+    setPendingTags(initialTags);
     setEditingTags(false);
     setSerialOutput('');
     setIsModalOpen(true);
@@ -190,6 +201,7 @@ const ComputeDashboardPage = () => {
         { tags: pendingTags }
       );
       setEditingTags(false);
+      // ensure selectedInstance.tags is an array for UI consistency
       setSelectedInstance({ ...selectedInstance, tags: pendingTags });
       loadData();
     } catch (err: any) {
@@ -703,7 +715,7 @@ const ComputeDashboardPage = () => {
                   </div>
 
                   <div className="flex flex-wrap gap-2">
-                    {(editingTags ? pendingTags : (selectedInstance.tags || [])).map(tag => (
+                    {getDisplayedTags().map(tag => (
                       <span key={tag} className="inline-flex items-center gap-1.5 px-3 py-1 bg-blue-50 text-blue-700 rounded-full text-[12px] font-medium">
                         <Tag className="w-3 h-3" />
                         {tag}
@@ -714,7 +726,7 @@ const ComputeDashboardPage = () => {
                         )}
                       </span>
                     ))}
-                    {(editingTags ? pendingTags : (selectedInstance.tags || [])).length === 0 && (
+                    {getDisplayedTags().length === 0 && (
                       <span className="text-[13px] text-gray-400">No tags</span>
                     )}
                   </div>
