@@ -9,7 +9,7 @@ Implements GCP Cloud Monitoring REST API v3 endpoints for:
 """
 
 import uuid
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Optional, Dict, Any, List
 
 from fastapi import APIRouter, HTTPException, Query, Path
@@ -43,7 +43,7 @@ router = APIRouter()
 # ============================================================================
 
 
-@router.post("/v3/projects/{project}/metricDescriptors")
+@router.post("/projects/{project}/metricDescriptors")
 async def create_metric_descriptor(project: str, request: Dict[str, Any]) -> Dict[str, Any]:
     """
     Create a metric descriptor.
@@ -84,7 +84,7 @@ async def create_metric_descriptor(project: str, request: Dict[str, Any]) -> Dic
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.get("/v3/projects/{project}/metricDescriptors")
+@router.get("/projects/{project}/metricDescriptors")
 async def list_metric_descriptors(
     project: str,
     filter: Optional[str] = Query(None),
@@ -102,7 +102,7 @@ async def list_metric_descriptors(
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.get("/v3/projects/{project}/metricDescriptors/{metric_type:path}")
+@router.get("/projects/{project}/metricDescriptors/{metric_type:path}")
 async def get_metric_descriptor(project: str, metric_type: str) -> Dict[str, Any]:
     """Get a specific metric descriptor by type."""
     try:
@@ -116,7 +116,7 @@ async def get_metric_descriptor(project: str, metric_type: str) -> Dict[str, Any
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.delete("/v3/projects/{project}/metricDescriptors/{metric_type:path}")
+@router.delete("/projects/{project}/metricDescriptors/{metric_type:path}")
 async def delete_metric_descriptor(project: str, metric_type: str) -> Dict[str, Any]:
     """Delete a metric descriptor."""
     try:
@@ -131,7 +131,7 @@ async def delete_metric_descriptor(project: str, metric_type: str) -> Dict[str, 
 # ============================================================================
 
 
-@router.post("/v3/projects/{project}/timeSeries")
+@router.post("/projects/{project}/timeSeries")
 async def write_time_series(project: str, request: Dict[str, Any]) -> Dict[str, Any]:
     """
     Write time series data (ingest metrics).
@@ -182,7 +182,7 @@ async def write_time_series(project: str, request: Dict[str, Any]) -> Dict[str, 
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.get("/v3/projects/{project}/timeSeries")
+@router.get("/projects/{project}/timeSeries")
 async def list_time_series(
     project: str,
     filter: str = Query(...),
@@ -208,7 +208,7 @@ async def list_time_series(
 
         # Default to last 1 hour if not specified
         if not end_time:
-            end_time = datetime.utcnow()
+            end_time = datetime.now(timezone.utc)
         if not start_time:
             start_time = end_time - timedelta(hours=1)
 
@@ -235,7 +235,7 @@ async def list_time_series(
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.post("/v3/projects/{project}/timeSeries:query")
+@router.post("/projects/{project}/timeSeries:query")
 async def query_time_series_mql(project: str, request: Dict[str, Any]) -> Dict[str, Any]:
     """
     Query time series using MQL (Monitoring Query Language).
@@ -262,7 +262,7 @@ async def query_time_series_mql(project: str, request: Dict[str, Any]) -> Dict[s
 # ============================================================================
 
 
-@router.post("/v3/projects/{project}/alertPolicies")
+@router.post("/projects/{project}/alertPolicies")
 async def create_alert_policy(project: str, request: Dict[str, Any]) -> Dict[str, Any]:
     """
     Create an alert policy.
@@ -331,7 +331,7 @@ async def create_alert_policy(project: str, request: Dict[str, Any]) -> Dict[str
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.get("/v3/projects/{project}/alertPolicies")
+@router.get("/projects/{project}/alertPolicies")
 async def list_alert_policies(project: str, page_size: int = Query(100)) -> Dict[str, Any]:
     """List alert policies for a project."""
     try:
@@ -344,7 +344,7 @@ async def list_alert_policies(project: str, page_size: int = Query(100)) -> Dict
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.get("/v3/projects/{project}/alertPolicies/{policy_id}")
+@router.get("/projects/{project}/alertPolicies/{policy_id}")
 async def get_alert_policy(project: str, policy_id: str) -> Dict[str, Any]:
     """Get a specific alert policy."""
     try:
@@ -358,7 +358,7 @@ async def get_alert_policy(project: str, policy_id: str) -> Dict[str, Any]:
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.patch("/v3/projects/{project}/alertPolicies/{policy_id}")
+@router.patch("/projects/{project}/alertPolicies/{policy_id}")
 async def update_alert_policy(
     project: str, policy_id: str, request: Dict[str, Any]
 ) -> Dict[str, Any]:
@@ -396,7 +396,7 @@ async def update_alert_policy(
         if "notificationChannels" in request:
             policy.notification_channels = request["notificationChannels"]
 
-        policy.updated_at = datetime.utcnow()
+        policy.updated_at = datetime.now(timezone.utc)
         storage.update_alert_policy(project, policy)
 
         print(f"[Monitoring] Updated alert policy: {policy.display_name}")
@@ -408,7 +408,7 @@ async def update_alert_policy(
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.delete("/v3/projects/{project}/alertPolicies/{policy_id}")
+@router.delete("/projects/{project}/alertPolicies/{policy_id}")
 async def delete_alert_policy(project: str, policy_id: str) -> Dict[str, Any]:
     """Delete an alert policy."""
     try:
@@ -423,7 +423,7 @@ async def delete_alert_policy(project: str, policy_id: str) -> Dict[str, Any]:
 # ============================================================================
 
 
-@router.post("/v3/projects/{project}/notificationChannels")
+@router.post("/projects/{project}/notificationChannels")
 async def create_notification_channel(
     project: str, request: Dict[str, Any]
 ) -> Dict[str, Any]:
@@ -448,7 +448,7 @@ async def create_notification_channel(
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.get("/v3/projects/{project}/notificationChannels")
+@router.get("/projects/{project}/notificationChannels")
 async def list_notification_channels(project: str) -> Dict[str, Any]:
     """List notification channels for a project."""
     try:
@@ -460,7 +460,7 @@ async def list_notification_channels(project: str) -> Dict[str, Any]:
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.delete("/v3/projects/{project}/notificationChannels/{channel_id}")
+@router.delete("/projects/{project}/notificationChannels/{channel_id}")
 async def delete_notification_channel(project: str, channel_id: str) -> Dict[str, Any]:
     """Delete a notification channel."""
     try:
@@ -475,7 +475,7 @@ async def delete_notification_channel(project: str, channel_id: str) -> Dict[str
 # ============================================================================
 
 
-@router.get("/v3/projects/{project}/notificationHistory")
+@router.get("/projects/{project}/notificationHistory")
 async def get_notification_history(project: str) -> Dict[str, Any]:
     """
     Get history of all notifications sent (simulator feature).
@@ -500,7 +500,7 @@ async def health_check() -> Dict[str, Any]:
         stats = storage.health_check()
         return {
             "status": "healthy",
-            "timestamp": datetime.utcnow().isoformat(),
+            "timestamp": datetime.now(timezone.utc).isoformat(),
             "storage": stats,
         }
     except Exception as e:

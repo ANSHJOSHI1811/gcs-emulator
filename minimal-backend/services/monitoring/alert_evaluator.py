@@ -6,7 +6,7 @@ Background task that periodically evaluates alert policies and sends notificatio
 
 import asyncio
 import uuid
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Dict, List, Optional
 
 from .models import (
@@ -66,7 +66,7 @@ class AlertPolicyEvaluator:
             if new_state != policy.state:
                 old_state = policy.state
                 policy.state = new_state
-                policy.state_updated_at = datetime.utcnow()
+                policy.state_updated_at = datetime.now(timezone.utc)
                 self.storage.update_alert_policy(project, policy)
 
                 print(
@@ -95,8 +95,8 @@ class AlertPolicyEvaluator:
             duration_seconds = int(duration_str.rstrip("s"))
 
             # Get time series matching filter
-            start_time = datetime.utcnow() - timedelta(seconds=duration_seconds)
-            end_time = datetime.utcnow()
+            start_time = datetime.now(timezone.utc) - timedelta(seconds=duration_seconds)
+            end_time = datetime.now(timezone.utc)
 
             time_series_list = self.storage.list_time_series(
                 project=project,
