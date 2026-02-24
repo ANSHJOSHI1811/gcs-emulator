@@ -160,11 +160,16 @@ export const serviceCategories: ServiceCategory[] = [
     services: [
       {
         id: 'monitoring',
-        name: 'Monitoring',
+        name: 'Cloud Monitoring',
         description: 'Monitor your Google Cloud and AWS resources',
         icon: Activity,
         category: 'Monitoring',
-        enabled: false,
+        enabled: true,
+        sidebarLinks: [
+          { label: 'Dashboard', path: '/services/monitoring', icon: Activity },
+          { label: 'Metrics', path: '/services/monitoring/metrics', icon: Activity },
+          { label: 'Alerts', path: '/services/monitoring/alerts', icon: Activity },
+        ],
       },
     ],
   },

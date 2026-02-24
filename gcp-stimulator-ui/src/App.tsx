@@ -26,6 +26,7 @@ import NetworksPage from './pages/NetworksPage';
 import SubnetsPage from './pages/SubnetsPage';
 import FirewallsPage from './pages/FirewallsPage';
 import RoutesPage from './pages/RoutesPage';
+import MonitoringDashboard from './pages/MonitoringDashboard';
 
 function App() {
   return (
@@ -87,6 +88,11 @@ function App() {
               <Route path="subnets" element={<SubnetsPage />} />
               <Route path="firewalls" element={<FirewallsPage />} />
               <Route path="routes" element={<RoutesPage />} />
+            </Route>
+            
+            {/* Cloud Monitoring Service Routes */}
+            <Route path="/services/monitoring">
+              <Route index element={<MonitoringDashboard />} />
             </Route>
             
             {/* Legacy VPC route redirect */}
