@@ -5,6 +5,8 @@ from services.compute.router import router as compute_router
 from services.vpc.router import router as vpc_router
 from services.iam.router import router as iam_router
 from services.gke.router import router as gke_router
+from services.run.router import router as run_router
+from services.artifacts.router import router as artifacts_router
 from services.projects.router import router as projects_router
 from api import storage  # storage remains in api/ (stable, 1100+ lines)
 import os
@@ -43,6 +45,13 @@ app.include_router(storage.router, tags=["Cloud Storage"])
 # GKE — registered at both /container/v1 (internal UI) and /v1 (gcloud CLI compatibility)
 app.include_router(gke_router, prefix="/container/v1", tags=["GKE"])
 app.include_router(gke_router, prefix="/v1", tags=["GKE (gcloud CLI)"])
+
+# Cloud Run — gcloud compatibility (run.googleapis.com/v2)
+app.include_router(run_router, prefix="/v2", tags=["Cloud Run"])
+app.include_router(run_router, prefix="/run/v2", tags=["Cloud Run (alt)"])
+
+# Artifact Registry — artifactregistry.googleapis.com/v1
+app.include_router(artifacts_router, prefix="/v1", tags=["Artifact Registry"])
 
 
 def init_zones_and_machine_types(db):

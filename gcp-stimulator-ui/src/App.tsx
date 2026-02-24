@@ -18,6 +18,9 @@ import CreateInstancePage from './pages/CreateInstancePage';
 import GKEDashboardPage from './pages/GKEDashboardPage';
 import CreateClusterPage from './pages/CreateClusterPage';
 import GKEClusterDetailPage from './pages/GKEClusterDetailPage';
+import CloudRunDashboardPage from './pages/CloudRunDashboardPage';
+import CloudRunServiceDetailPage from './pages/CloudRunServiceDetailPage';
+import ArtifactRegistryPage from './pages/ArtifactRegistryPage';
 import VPCDashboardPage from './pages/VPCDashboardPage';
 import NetworksPage from './pages/NetworksPage';
 import SubnetsPage from './pages/SubnetsPage';
@@ -65,6 +68,17 @@ function App() {
               <Route path="clusters/create" element={<CreateClusterPage />} />
               <Route path="clusters/:clusterName" element={<GKEClusterDetailPage />} />
               <Route path="node-pools" element={<GKEDashboardPage />} />
+            </Route>
+
+            {/* Cloud Run Service Routes */}
+            <Route path="/services/cloud-run">
+              <Route index element={<CloudRunDashboardPage />} />
+              <Route path="services/:serviceName" element={<CloudRunServiceDetailPage />} />
+            </Route>
+
+            {/* Artifact Registry Service Routes */}
+            <Route path="/services/artifact-registry">
+              <Route index element={<ArtifactRegistryPage />} />
             </Route>
 
             {/* VPC Network Service Routes */}

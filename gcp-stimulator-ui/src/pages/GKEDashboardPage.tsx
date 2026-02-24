@@ -5,14 +5,17 @@ import {
   listClusters,
   deleteCluster,
   getKubeconfig,
+  getCredentials,
   stopCluster,
   startCluster,
   listWorkloads,
   GKECluster,
+  GKECredentialsResponse,
   Pod,
   Deployment,
   StatefulSet,
 } from '../api/gke';
+import { Modal } from '../components/Modal';
 import toast from 'react-hot-toast';
 import {
   Plus,
@@ -27,6 +30,7 @@ import {
   Download,
   Square,
   Play,
+  KeyRound,
   Box,
   Package,
   Database,
@@ -102,6 +106,9 @@ export default function GKEDashboardPage() {
   const [stoppingCluster, setStoppingCluster] = useState<string | null>(null);
   const [startingCluster, setStartingCluster] = useState<string | null>(null);
   const [kubeconfigCluster, setKubeconfigCluster] = useState<string | null>(null);
+  const [credentialsCluster, setCredentialsCluster] = useState<string | null>(null);
+  const [credentialsResult, setCredentialsResult] = useState<GKECredentialsResponse | null>(null);
+  const [showCredentialsModal, setShowCredentialsModal] = useState(false);
   const pollingRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   // Workloads tab state
@@ -238,6 +245,20 @@ export default function GKEDashboardPage() {
       toast.error(err instanceof Error ? err.message : 'Download failed');
     } finally {
       setKubeconfigCluster(null);
+    }
+  }
+
+  async function handleGetCredentials(cluster: GKECluster) {
+    setCredentialsCluster(cluster.name);
+    try {
+      const result = await getCredentials(cluster.location, cluster.name);
+      setCredentialsResult(result);
+      setShowCredentialsModal(true);
+      toast.success(`Credentials prepared for ${cluster.name}`);
+    } catch (err: unknown) {
+      toast.error(err instanceof Error ? err.message : 'Get credentials failed');
+    } finally {
+      setCredentialsCluster(null);
     }
   }
 
@@ -420,6 +441,18 @@ export default function GKEDashboardPage() {
                           </button>
                         )}
                         <button
+                          title="Get credentials"
+                          disabled={c.status !== 'RUNNING' || credentialsCluster === c.name}
+                          onClick={() => handleGetCredentials(c)}
+                          className="rounded p-1 text-gray-500 hover:bg-gray-100 hover:text-indigo-600 disabled:opacity-40 disabled:cursor-not-allowed"
+                        >
+                          {credentialsCluster === c.name ? (
+                            <Loader2 className="h-4 w-4 animate-spin" />
+                          ) : (
+                            <KeyRound className="h-4 w-4" />
+                          )}
+                        </button>
+                        <button
                           title="Download kubeconfig"
                           disabled={c.status !== 'RUNNING' || kubeconfigCluster === c.name}
                           onClick={() => handleDownloadKubeconfig(c)}
@@ -456,6 +489,36 @@ export default function GKEDashboardPage() {
         </div>
       </div>
       )}
+
+      <Modal
+        isOpen={showCredentialsModal}
+        onClose={() => setShowCredentialsModal(false)}
+        title="Cluster Credentials"
+        description="kubectl context and endpoint information"
+      >
+        {credentialsResult ? (
+          <div className="space-y-3 text-sm">
+            <div>
+              <p className="text-xs uppercase tracking-wide text-gray-500">Context</p>
+              <p className="font-medium text-gray-900 break-all">{credentialsResult.context}</p>
+            </div>
+            <div>
+              <p className="text-xs uppercase tracking-wide text-gray-500">Endpoint</p>
+              <p className="font-medium text-gray-900 break-all">{credentialsResult.endpoint}</p>
+            </div>
+            {credentialsResult.warnings?.length > 0 && (
+              <div className="rounded-md border border-yellow-200 bg-yellow-50 p-3">
+                <p className="text-xs uppercase tracking-wide text-yellow-700 mb-1">Warnings</p>
+                {credentialsResult.warnings.map((w) => (
+                  <p key={w} className="text-sm text-yellow-800">{w}</p>
+                ))}
+              </div>
+            )}
+          </div>
+        ) : (
+          <p className="text-sm text-gray-600">No credentials payload returned.</p>
+        )}
+      </Modal>
 
       {/* Workloads Tab */}
       {activeTab === 'workloads' && (

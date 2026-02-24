@@ -3,16 +3,26 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from core.database import get_db, GKECluster, GKENodePool, GKEAddon, SessionLocal
 from pydantic import BaseModel
-from typing import Optional
+from typing import Optional, Dict, Any
 import threading, random
+from datetime import datetime
 
 router = APIRouter()
 
 _SUPPORTED_VERSIONS = ["1.30", "1.29", "1.28", "1.27"]
 _DEFAULT_VERSION = "1.28"
+_ops_lock = threading.Lock()
+_operations: Dict[str, Dict[str, Any]] = {}
 
 
 # ─── Serialisers ──────────────────────────────────────────────────────────────
+
+def _public_endpoint(c: GKECluster) -> str:
+    # gcloud get-credentials expects an endpoint reachable from the host.
+    if getattr(c, "api_server_port", None):
+        return f"localhost:{c.api_server_port}"
+    return c.endpoint or ""
+
 
 def _cluster_to_dict(c: GKECluster, project: str) -> dict:
     version = c.master_version or "1.28.0"
@@ -30,7 +40,7 @@ def _cluster_to_dict(c: GKECluster, project: str) -> dict:
         "currentNodeVersion": version,
         "location": c.location,
         "zone": c.location,
-        "endpoint": c.endpoint or "",
+        "endpoint": _public_endpoint(c),
         "network": c.network,
         "subnetwork": c.subnetwork,
         "clusterIpv4Cidr": getattr(c, "cluster_ipv4_cidr", "/17") or "/17",
@@ -121,10 +131,12 @@ def _addon_to_dict(a: GKEAddon) -> dict:
 
 def _operation_response(name: str, project: str, location: str, op_type: str) -> dict:
     op_id = f"operation-{random.randint(1_000_000_000_000, 9_999_999_999_999)}"
-    return {
+    op = {
         "name": op_id,
         "operationType": op_type,
         "status": "RUNNING",
+        "progress": 0,
+        "insertTime": datetime.utcnow().isoformat() + "Z",
         "targetLink": (
             f"https://container.googleapis.com/v1/projects/{project}"
             f"/locations/{location}/clusters/{name}"
@@ -134,22 +146,44 @@ def _operation_response(name: str, project: str, location: str, op_type: str) ->
             f"/locations/{location}/operations/{op_id}"
         ),
     }
+    with _ops_lock:
+        _operations[op_id] = op.copy()
+        # Prevent unbounded growth.
+        if len(_operations) > 500:
+            oldest = list(_operations.keys())[:100]
+            for k in oldest:
+                _operations.pop(k, None)
+    return op
+
+
+def _op_update(op_id: Optional[str], **updates):
+    if not op_id:
+        return
+    with _ops_lock:
+        op = _operations.get(op_id)
+        if not op:
+            return
+        op.update(updates)
+        _operations[op_id] = op
 
 
 # ─── Background workers ────────────────────────────────────────────────────────
 
-def _provision_cluster(cluster_id: int):
+def _provision_cluster(cluster_id: int, op_id: Optional[str] = None):
     """Background thread: spin up k3s, store kubeconfig + CA cert."""
     from docker_manager import create_k3s_cluster, get_k3s_kubeconfig
 
     db = SessionLocal()
     try:
+        _op_update(op_id, progress=15, status="RUNNING")
         cluster = db.query(GKECluster).filter_by(id=cluster_id).first()
         if not cluster:
             return
 
         k8s_ver = ".".join((cluster.master_version or "1.28").split(".")[:2])
+        _op_update(op_id, progress=40, status="RUNNING")
         result = create_k3s_cluster(cluster.name, kubernetes_version=k8s_ver)
+        _op_update(op_id, progress=75, status="RUNNING")
         kubeconfig = get_k3s_kubeconfig(result["container_id"], result["endpoint_ip"])
 
         cluster.container_id      = result["container_id"]
@@ -167,8 +201,10 @@ def _provision_cluster(cluster_id: int):
         if np:
             np.status = "RUNNING"
             db.commit()
+        _op_update(op_id, progress=100, status="DONE", endTime=datetime.utcnow().isoformat() + "Z")
     except Exception as e:
         print(f"Failed to provision cluster id={cluster_id}: {e}")
+        _op_update(op_id, status="ERROR", progress=100, error=str(e), endTime=datetime.utcnow().isoformat() + "Z")
         db2 = SessionLocal()
         try:
             c = db2.query(GKECluster).filter_by(id=cluster_id).first()
@@ -180,9 +216,10 @@ def _provision_cluster(cluster_id: int):
         db.close()
 
 
-def _delete_cluster_bg(cluster_id: int, container_id: Optional[str], cluster_name: str):
+def _delete_cluster_bg(cluster_id: int, container_id: Optional[str], cluster_name: str, op_id: Optional[str] = None):
     from docker_manager import delete_k3s_cluster
 
+    _op_update(op_id, progress=25, status="RUNNING")
     if container_id:
         delete_k3s_cluster(container_id, cluster_name=cluster_name)
 
@@ -193,27 +230,35 @@ def _delete_cluster_bg(cluster_id: int, container_id: Optional[str], cluster_nam
             db.query(GKENodePool).filter_by(cluster_name=cluster.name, project_id=cluster.project_id).delete()
             db.query(GKEAddon).filter_by(cluster_name=cluster.name, project_id=cluster.project_id).delete()
             db.delete(cluster); db.commit()
+        _op_update(op_id, progress=100, status="DONE", endTime=datetime.utcnow().isoformat() + "Z")
+    except Exception as e:
+        _op_update(op_id, status="ERROR", progress=100, error=str(e), endTime=datetime.utcnow().isoformat() + "Z")
     finally:
         db.close()
 
 
-def _stop_cluster_bg(cluster_id: int, container_id: str):
+def _stop_cluster_bg(cluster_id: int, container_id: str, op_id: Optional[str] = None):
     from docker_manager import stop_k3s_cluster
 
+    _op_update(op_id, progress=35, status="RUNNING")
     stop_k3s_cluster(container_id)
     db = SessionLocal()
     try:
         c = db.query(GKECluster).filter_by(id=cluster_id).first()
         if c:
             c.status = "STOPPED"; db.commit()
+        _op_update(op_id, progress=100, status="DONE", endTime=datetime.utcnow().isoformat() + "Z")
+    except Exception as e:
+        _op_update(op_id, status="ERROR", progress=100, error=str(e), endTime=datetime.utcnow().isoformat() + "Z")
     finally:
         db.close()
 
 
-def _start_cluster_bg(cluster_id: int, container_id: str):
+def _start_cluster_bg(cluster_id: int, container_id: str, op_id: Optional[str] = None):
     from docker_manager import start_k3s_cluster
     import time
 
+    _op_update(op_id, progress=35, status="RUNNING")
     start_k3s_cluster(container_id)
     time.sleep(5)
     db = SessionLocal()
@@ -221,13 +266,17 @@ def _start_cluster_bg(cluster_id: int, container_id: str):
         c = db.query(GKECluster).filter_by(id=cluster_id).first()
         if c:
             c.status = "RUNNING"; db.commit()
+        _op_update(op_id, progress=100, status="DONE", endTime=datetime.utcnow().isoformat() + "Z")
+    except Exception as e:
+        _op_update(op_id, status="ERROR", progress=100, error=str(e), endTime=datetime.utcnow().isoformat() + "Z")
     finally:
         db.close()
 
 
-def _delete_nodepool_bg(nodepool_id: int, container_ids: list):
+def _delete_nodepool_bg(nodepool_id: int, container_ids: list, op_id: Optional[str] = None):
     from docker_manager import delete_k3s_agent
 
+    _op_update(op_id, progress=35, status="RUNNING")
     for cid in (container_ids or []):
         delete_k3s_agent(cid)
 
@@ -236,17 +285,21 @@ def _delete_nodepool_bg(nodepool_id: int, container_ids: list):
         np = db.query(GKENodePool).filter_by(id=nodepool_id).first()
         if np:
             db.delete(np); db.commit()
+        _op_update(op_id, progress=100, status="DONE", endTime=datetime.utcnow().isoformat() + "Z")
+    except Exception as e:
+        _op_update(op_id, status="ERROR", progress=100, error=str(e), endTime=datetime.utcnow().isoformat() + "Z")
     finally:
         db.close()
 
 
-def _provision_nodepool_bg(np_id: int, cluster_id: int, node_count: int, pool_name: str):
+def _provision_nodepool_bg(np_id: int, cluster_id: int, node_count: int, pool_name: str, op_id: Optional[str] = None):
     """Background: spin up k3s agent containers for a new node pool."""
     from docker_manager import create_k3s_agents
     import time
 
     db = SessionLocal()
     try:
+        _op_update(op_id, progress=20, status="RUNNING")
         cluster = db.query(GKECluster).filter_by(id=cluster_id).first()
         np = db.query(GKENodePool).filter_by(id=np_id).first()
         if not cluster or not np:
@@ -256,6 +309,7 @@ def _provision_nodepool_bg(np_id: int, cluster_id: int, node_count: int, pool_na
             np.status = "RUNNING"; db.commit(); return
 
         k8s_ver = (cluster.master_version or "1.28").rsplit(".", 1)[0]  # "1.28.0" → "1.28"
+        _op_update(op_id, progress=55, status="RUNNING")
         container_ids = create_k3s_agents(
             cluster_name=cluster.name,
             server_container_id=cluster.container_id,
@@ -269,8 +323,10 @@ def _provision_nodepool_bg(np_id: int, cluster_id: int, node_count: int, pool_na
             np.container_ids = container_ids
             np.status = "RUNNING"
             db.commit()
+        _op_update(op_id, progress=100, status="DONE", endTime=datetime.utcnow().isoformat() + "Z")
     except Exception as e:
         print(f"❌ Node pool provisioning failed: {e}")
+        _op_update(op_id, status="ERROR", progress=100, error=str(e), endTime=datetime.utcnow().isoformat() + "Z")
         _db2 = SessionLocal()
         try:
             _np = _db2.query(GKENodePool).filter_by(id=np_id).first()
@@ -282,12 +338,13 @@ def _provision_nodepool_bg(np_id: int, cluster_id: int, node_count: int, pool_na
         db.close()
 
 
-def _resize_nodepool_bg(np_id: int, cluster_id: int, desired: int):
+def _resize_nodepool_bg(np_id: int, cluster_id: int, desired: int, op_id: Optional[str] = None):
     """Background: scale node pool up or down."""
     from docker_manager import resize_k3s_agents
 
     db = SessionLocal()
     try:
+        _op_update(op_id, progress=25, status="RUNNING")
         cluster = db.query(GKECluster).filter_by(id=cluster_id).first()
         np = db.query(GKENodePool).filter_by(id=np_id).first()
         if not cluster or not np:
@@ -308,8 +365,10 @@ def _resize_nodepool_bg(np_id: int, cluster_id: int, desired: int):
             np2.node_count = desired
             np2.status = "RUNNING"
             db.commit()
+        _op_update(op_id, progress=100, status="DONE", endTime=datetime.utcnow().isoformat() + "Z")
     except Exception as e:
         print(f"❌ Node pool resize failed: {e}")
+        _op_update(op_id, status="ERROR", progress=100, error=str(e), endTime=datetime.utcnow().isoformat() + "Z")
     finally:
         db.close()
 
@@ -342,6 +401,7 @@ class KubectlRequest(BaseModel):
 # ─── Cluster endpoints ─────────────────────────────────────────────────────────
 
 @router.get("/projects/{project}/locations/{location}/clusters")
+@router.get("/projects/{project}/zones/{location}/clusters")
 def list_clusters(project: str, location: str, db: Session = Depends(get_db)):
     q = db.query(GKECluster).filter_by(project_id=project)
     if location != "-":
@@ -350,6 +410,7 @@ def list_clusters(project: str, location: str, db: Session = Depends(get_db)):
 
 
 @router.post("/projects/{project}/locations/{location}/clusters", status_code=200)
+@router.post("/projects/{project}/zones/{location}/clusters", status_code=200)
 def create_cluster(project: str, location: str, body: CreateClusterRequest, db: Session = Depends(get_db)):
     d = body.cluster
     name = d.get("name")
@@ -397,11 +458,13 @@ def create_cluster(project: str, location: str, body: CreateClusterRequest, db: 
     ))
     db.commit()
 
-    threading.Thread(target=_provision_cluster, args=(cluster.id,), daemon=True).start()
-    return _operation_response(name, project, location, "CREATE_CLUSTER")
+    op = _operation_response(name, project, location, "CREATE_CLUSTER")
+    threading.Thread(target=_provision_cluster, args=(cluster.id, op["name"]), daemon=True).start()
+    return op
 
 
 @router.get("/projects/{project}/locations/{location}/clusters/{cluster_name}")
+@router.get("/projects/{project}/zones/{location}/clusters/{cluster_name}")
 def get_cluster(project: str, location: str, cluster_name: str, db: Session = Depends(get_db)):
     c = db.query(GKECluster).filter_by(project_id=project, location=location, name=cluster_name).first()
     if not c:
@@ -410,13 +473,19 @@ def get_cluster(project: str, location: str, cluster_name: str, db: Session = De
 
 
 @router.delete("/projects/{project}/locations/{location}/clusters/{cluster_name}")
+@router.delete("/projects/{project}/zones/{location}/clusters/{cluster_name}")
 def delete_cluster(project: str, location: str, cluster_name: str, db: Session = Depends(get_db)):
     c = db.query(GKECluster).filter_by(project_id=project, location=location, name=cluster_name).first()
     if not c:
         raise HTTPException(404, f"Cluster '{cluster_name}' not found")
     c.status = "STOPPING"; db.commit()
-    threading.Thread(target=_delete_cluster_bg, args=(c.id, c.container_id, c.name), daemon=True).start()
-    return _operation_response(cluster_name, project, location, "DELETE_CLUSTER")
+    op = _operation_response(cluster_name, project, location, "DELETE_CLUSTER")
+    threading.Thread(
+        target=_delete_cluster_bg,
+        args=(c.id, c.container_id, c.name, op["name"]),
+        daemon=True,
+    ).start()
+    return op
 
 
 @router.post("/projects/{project}/locations/{location}/clusters/{cluster_name}:stop")
@@ -430,8 +499,9 @@ def stop_cluster(project: str, location: str, cluster_name: str, db: Session = D
     if not c.container_id:
         raise HTTPException(409, "Cluster has no associated container")
     c.status = "STOPPING"; db.commit()
-    threading.Thread(target=_stop_cluster_bg, args=(c.id, c.container_id), daemon=True).start()
-    return _operation_response(cluster_name, project, location, "STOP_CLUSTER")
+    op = _operation_response(cluster_name, project, location, "STOP_CLUSTER")
+    threading.Thread(target=_stop_cluster_bg, args=(c.id, c.container_id, op["name"]), daemon=True).start()
+    return op
 
 
 @router.post("/projects/{project}/locations/{location}/clusters/{cluster_name}:start")
@@ -445,8 +515,9 @@ def start_cluster(project: str, location: str, cluster_name: str, db: Session = 
     if not c.container_id:
         raise HTTPException(409, "Cluster has no associated container")
     c.status = "RECONCILING"; db.commit()
-    threading.Thread(target=_start_cluster_bg, args=(c.id, c.container_id), daemon=True).start()
-    return _operation_response(cluster_name, project, location, "START_CLUSTER")
+    op = _operation_response(cluster_name, project, location, "START_CLUSTER")
+    threading.Thread(target=_start_cluster_bg, args=(c.id, c.container_id, op["name"]), daemon=True).start()
+    return op
 
 
 @router.patch("/projects/{project}/locations/{location}/clusters/{cluster_name}")
@@ -483,6 +554,7 @@ def update_cluster(
 # ─── Kubeconfig, nodes & kubectl ──────────────────────────────────────────────
 
 @router.get("/projects/{project}/locations/{location}/clusters/{cluster_name}/kubeconfig")
+@router.get("/projects/{project}/zones/{location}/clusters/{cluster_name}/kubeconfig")
 def get_kubeconfig(project: str, location: str, cluster_name: str, db: Session = Depends(get_db)):
     c = db.query(GKECluster).filter_by(project_id=project, location=location, name=cluster_name).first()
     if not c:
@@ -491,7 +563,76 @@ def get_kubeconfig(project: str, location: str, cluster_name: str, db: Session =
         raise HTTPException(400, f"Cluster is not RUNNING (status: {c.status})")
     if not c.kubeconfig:
         raise HTTPException(503, "Kubeconfig not yet available")
-    return {"kubeconfig": c.kubeconfig}
+    kubeconfig = c.kubeconfig
+    public_ep = _public_endpoint(c)
+    if kubeconfig and public_ep:
+        kubeconfig = kubeconfig.replace(f"https://{c.endpoint}:6443", f"https://{public_ep}")
+        kubeconfig = kubeconfig.replace("https://127.0.0.1:6443", f"https://{public_ep}")
+        kubeconfig = kubeconfig.replace("https://localhost:6443", f"https://{public_ep}")
+    return {"kubeconfig": kubeconfig}
+
+
+@router.post("/projects/{project}/locations/{location}/clusters/{cluster_name}:getCredentials")
+@router.post("/projects/{project}/zones/{location}/clusters/{cluster_name}:getCredentials")
+def get_credentials(project: str, location: str, cluster_name: str, db: Session = Depends(get_db)):
+    """Best-effort kubeconfig context write on host, plus returned kubeconfig payload."""
+    c = db.query(GKECluster).filter_by(project_id=project, location=location, name=cluster_name).first()
+    if not c:
+        raise HTTPException(404, f"Cluster '{cluster_name}' not found")
+    if c.status != "RUNNING":
+        raise HTTPException(400, f"Cluster is not RUNNING (status: {c.status})")
+    if not c.kubeconfig:
+        raise HTTPException(503, "Kubeconfig not yet available")
+
+    kubeconfig = c.kubeconfig
+    public_ep = _public_endpoint(c)
+    kubeconfig = kubeconfig.replace(f"https://{c.endpoint}:6443", f"https://{public_ep}")
+    kubeconfig = kubeconfig.replace("https://127.0.0.1:6443", f"https://{public_ep}")
+    kubeconfig = kubeconfig.replace("https://localhost:6443", f"https://{public_ep}")
+
+    context_name = f"gke_{project}_{location}_{cluster_name}"
+    for line in kubeconfig.splitlines():
+        if line.strip().startswith("current-context:"):
+            context_name = line.split(":", 1)[1].strip()
+            break
+    warnings = []
+    try:
+        import os
+        import tempfile
+        import subprocess
+
+        kube_dir = os.path.expanduser("~/.kube")
+        os.makedirs(kube_dir, exist_ok=True)
+        fd, tmp_path = tempfile.mkstemp(prefix="gke-sim-", suffix=".yaml")
+        try:
+            with os.fdopen(fd, "w") as tmpf:
+                tmpf.write(kubeconfig)
+            env = os.environ.copy()
+            env["KUBECONFIG"] = f"{os.path.join(kube_dir, 'config')}:{tmp_path}"
+            merged = subprocess.run(
+                ["kubectl", "config", "view", "--flatten"],
+                env=env,
+                check=True,
+                capture_output=True,
+                text=True,
+            ).stdout
+            with open(os.path.join(kube_dir, "config"), "w") as f:
+                f.write(merged)
+        finally:
+            try:
+                os.remove(tmp_path)
+            except Exception:
+                pass
+    except Exception as e:
+        warnings.append(f"Could not auto-merge ~/.kube/config: {e}")
+
+    return {
+        "message": f"Credentials prepared for context {context_name}",
+        "context": context_name,
+        "endpoint": public_ep,
+        "kubeconfig": kubeconfig,
+        "warnings": warnings,
+    }
 
 
 @router.get("/projects/{project}/locations/{location}/clusters/{cluster_name}/nodes")
@@ -649,12 +790,13 @@ def create_node_pool(
     cluster_row = db.query(GKECluster).filter_by(
         project_id=project, location=location, name=cluster_name
     ).first()
+    op = _operation_response(cluster_name, project, location, "CREATE_NODE_POOL")
     threading.Thread(
         target=_provision_nodepool_bg,
-        args=(np.id, cluster_row.id, node_count, pool_name),
+        args=(np.id, cluster_row.id, node_count, pool_name, op["name"]),
         daemon=True,
     ).start()
-    return _operation_response(cluster_name, project, location, "CREATE_NODE_POOL")
+    return op
 
 
 @router.get("/projects/{project}/locations/{location}/clusters/{cluster_name}/nodePools/{pool_name}")
@@ -702,12 +844,13 @@ def set_node_pool_size(
         raise HTTPException(404, f"Cluster '{cluster_name}' not found")
 
     np.status = "RECONCILING"; db.commit()
+    op = _operation_response(cluster_name, project, location, "SET_NODE_POOL_SIZE")
     threading.Thread(
         target=_resize_nodepool_bg,
-        args=(np.id, cluster_row.id, body.nodeCount),
+        args=(np.id, cluster_row.id, body.nodeCount, op["name"]),
         daemon=True,
     ).start()
-    return _operation_response(cluster_name, project, location, "SET_NODE_POOL_SIZE")
+    return op
 
 
 @router.delete("/projects/{project}/locations/{location}/clusters/{cluster_name}/nodePools/{pool_name}")
@@ -717,8 +860,9 @@ def delete_node_pool(project: str, location: str, cluster_name: str, pool_name: 
         raise HTTPException(404, f"Node pool '{pool_name}' not found")
     np_id = np.id; container_ids = np.container_ids or []
     np.status = "STOPPING"; db.commit()
-    threading.Thread(target=_delete_nodepool_bg, args=(np_id, container_ids), daemon=True).start()
-    return _operation_response(cluster_name, project, location, "DELETE_NODE_POOL")
+    op = _operation_response(cluster_name, project, location, "DELETE_NODE_POOL")
+    threading.Thread(target=_delete_nodepool_bg, args=(np_id, container_ids, op["name"]), daemon=True).start()
+    return op
 
 
 # ─── Addon endpoints ───────────────────────────────────────────────────────────
@@ -771,6 +915,7 @@ def delete_addon(project: str, location: str, cluster_name: str, addon_name: str
 # ─── Server Config ─────────────────────────────────────────────────────────────
 
 @router.get("/projects/{project}/locations/{location}/serverConfig")
+@router.get("/projects/{project}/zones/{location}/serverconfig")
 def get_server_config(project: str, location: str):
     """Return supported Kubernetes versions — used to populate create-cluster dropdowns."""
     return {
@@ -789,7 +934,11 @@ def get_server_config(project: str, location: str):
 
 @router.get("/projects/{project}/locations/{location}/operations/{operation_id}")
 def get_operation(project: str, location: str, operation_id: str):
-    """Return a DONE operation — gcloud polls this after create/delete/etc."""
+    """Return live operation status if available; otherwise fallback DONE."""
+    with _ops_lock:
+        op = _operations.get(operation_id)
+    if op:
+        return op
     return {
         "name": operation_id,
         "status": "DONE",

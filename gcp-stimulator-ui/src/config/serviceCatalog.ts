@@ -1,4 +1,4 @@
-import { LucideIcon, HardDrive, Cpu, Network, Shield, MessageSquare, Activity, Globe, Lock, Route, TableIcon, Box, Server, Layers } from 'lucide-react';
+import { LucideIcon, HardDrive, Cpu, Network, Shield, MessageSquare, Activity, Globe, Lock, Route, Box, Server, Layers, Cloud, PackageSearch } from 'lucide-react';
 
 export interface ServiceLink {
   label: string;
@@ -113,6 +113,29 @@ export const serviceCategories: ServiceCategory[] = [
         sidebarLinks: [
           { label: 'Clusters', path: '/services/gke/clusters', icon: Server },
           { label: 'Node Pools', path: '/services/gke/node-pools', icon: Layers },
+        ],
+      },
+      {
+        id: 'cloud-run',
+        name: 'Cloud Run',
+        description: 'Serverless containers with revision and traffic controls',
+        icon: Cloud,
+        category: 'Containers',
+        enabled: true,
+        sidebarLinks: [
+          { label: 'Dashboard', path: '/services/cloud-run', icon: Cloud },
+          { label: 'Services', path: '/services/cloud-run', icon: Server },
+        ],
+      },
+      {
+        id: 'artifact-registry',
+        name: 'Artifact Registry',
+        description: 'Container image repositories and local registry simulation',
+        icon: PackageSearch,
+        category: 'Containers',
+        enabled: true,
+        sidebarLinks: [
+          { label: 'Repositories', path: '/services/artifact-registry', icon: PackageSearch },
         ],
       },
     ],

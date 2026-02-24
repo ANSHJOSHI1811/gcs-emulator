@@ -3,7 +3,7 @@ import docker
 import ipaddress
 import time
 import random
-from typing import Optional
+from typing import Optional, Dict, List
 
 try:
     client = docker.from_env()
@@ -715,6 +715,156 @@ def run_kubectl_command(kubeconfig_yaml: str, command: str) -> dict:
         return {"stdout": "", "stderr": "kubectl command timed out (15s)", "exit_code": 1}
     finally:
         os.unlink(kc_path)
+
+
+# ─── Cloud Run + Artifact Registry helpers ────────────────────────────────────
+
+_CLOUD_RUN_PORT_RANGE = range(18080, 18280)
+_USED_RUN_PORTS: set[int] = set()
+_REGISTRY_CONTAINER = "gcs-stimulator-registry"
+
+
+def _find_free_run_port() -> int:
+    if not _docker_available:
+        return random.choice(list(_CLOUD_RUN_PORT_RANGE))
+    import socket
+    for port in _CLOUD_RUN_PORT_RANGE:
+        if port in _USED_RUN_PORTS:
+            continue
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+            try:
+                s.bind(("", port))
+                _USED_RUN_PORTS.add(port)
+                return port
+            except OSError:
+                continue
+    raise RuntimeError("No free port available in Cloud Run range 18080-18279")
+
+
+def ensure_local_registry() -> Dict[str, str]:
+    """Ensure local Docker registry exists on localhost:5000."""
+    if not _docker_available:
+        return {
+            "container_id": "stub-registry",
+            "endpoint": "localhost:5000",
+            "status": "RUNNING",
+        }
+    try:
+        c = client.containers.get(_REGISTRY_CONTAINER)
+        if c.status != "running":
+            c.start()
+        return {"container_id": c.id, "endpoint": "localhost:5000", "status": "RUNNING"}
+    except docker.errors.NotFound:
+        pass
+
+    c = client.containers.run(
+        "registry:2",
+        name=_REGISTRY_CONTAINER,
+        detach=True,
+        ports={"5000/tcp": 5000},
+        restart_policy={"Name": "unless-stopped"},
+        labels={"gcs-stimulator": "true", "service": "artifact-registry"},
+    )
+    return {"container_id": c.id, "endpoint": "localhost:5000", "status": "RUNNING"}
+
+
+def normalize_registry_image(image: str, project_id: str) -> str:
+    """Translate gcr.io/pkg.dev style names to localhost:5000 for local pulls."""
+    stripped = image.strip()
+    if stripped.startswith("localhost:5000/"):
+        return stripped
+
+    # gcr.io/{project}/path:tag -> localhost:5000/{project}/path:tag
+    if stripped.startswith("gcr.io/"):
+        parts = stripped.split("/", 2)
+        if len(parts) >= 3:
+            return f"localhost:5000/{parts[1]}/{parts[2]}"
+        return f"localhost:5000/{project_id}/image:latest"
+
+    # {region}-docker.pkg.dev/{project}/{repo}/path:tag -> localhost:5000/{project}/{repo}/path:tag
+    if ".pkg.dev/" in stripped:
+        after = stripped.split(".pkg.dev/", 1)[1]
+        return f"localhost:5000/{after}"
+
+    return stripped
+
+
+def _as_env_list(env_vars: List[Dict[str, str]]) -> Dict[str, str]:
+    env = {}
+    for item in env_vars or []:
+        name = item.get("name")
+        if not name:
+            continue
+        env[name] = str(item.get("value", ""))
+    return env
+
+
+def deploy_cloud_run_container(
+    service_name: str,
+    revision_name: str,
+    image: str,
+    env_vars: List[Dict[str, str]],
+    container_port: int = 8080,
+) -> Dict[str, object]:
+    """Run a Cloud Run revision as a local Docker container."""
+    if not _docker_available:
+        host_port = _find_free_run_port()
+        return {
+            "container_id": f"stub-run-{revision_name}",
+            "container_name": f"run-{service_name}-{revision_name}",
+            "host_port": host_port,
+            "url": f"http://localhost:{host_port}",
+        }
+
+    host_port = _find_free_run_port()
+    container_name = f"run-{service_name}-{revision_name}"
+
+    try:
+        old = client.containers.get(container_name)
+        old.remove(force=True)
+    except docker.errors.NotFound:
+        pass
+
+    try:
+        client.images.pull(image)
+    except Exception:
+        # Keep going; image might already exist locally or be build-only.
+        pass
+
+    env = _as_env_list(env_vars)
+    env["PORT"] = str(container_port)
+
+    c = client.containers.run(
+        image,
+        name=container_name,
+        detach=True,
+        environment=env,
+        ports={f"{container_port}/tcp": host_port},
+        labels={
+            "gcs-stimulator": "true",
+            "service": "cloud-run",
+            "run.service": service_name,
+            "run.revision": revision_name,
+        },
+    )
+    return {
+        "container_id": c.id,
+        "container_name": container_name,
+        "host_port": host_port,
+        "url": f"http://localhost:{host_port}",
+    }
+
+
+def delete_cloud_run_revision_container(container_id: Optional[str]) -> None:
+    if not container_id:
+        return
+    if not _docker_available:
+        return
+    try:
+        c = client.containers.get(container_id)
+        c.remove(force=True)
+    except Exception:
+        return
 
 
 # Initialize default network

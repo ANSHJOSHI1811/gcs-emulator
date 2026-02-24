@@ -122,6 +122,14 @@ export interface StatefulSet {
   creationTimestamp: string;
 }
 
+export interface GKECredentialsResponse {
+  message: string;
+  context: string;
+  endpoint: string;
+  kubeconfig: string;
+  warnings: string[];
+}
+
 export interface ServerConfig {
   defaultClusterVersion: string;
   validMasterVersions: string[];
@@ -255,6 +263,18 @@ export async function getKubeconfig(location: string, clusterName: string): Prom
     `/container/v1/projects/${project}/locations/${location}/clusters/${clusterName}/kubeconfig`
   );
   return res.data.kubeconfig;
+}
+
+export async function getCredentials(
+  location: string,
+  clusterName: string
+): Promise<GKECredentialsResponse> {
+  const project = getCurrentProject();
+  const res = await apiClient.post<GKECredentialsResponse>(
+    `/container/v1/projects/${project}/locations/${location}/clusters/${clusterName}:getCredentials`,
+    {}
+  );
+  return res.data;
 }
 
 export async function execKubectl(

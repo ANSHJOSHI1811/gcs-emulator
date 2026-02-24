@@ -8,7 +8,8 @@ const PlaceholderServicePage = () => {
 
   // If service is enabled (like storage), redirect to its default view
   if (service?.enabled) {
-    return <Navigate to={`/services/${serviceName}/buckets`} replace />;
+    const firstLink = service.sidebarLinks?.[0]?.path;
+    return <Navigate to={firstLink || `/services/${serviceName}`} replace />;
   }
 
   if (!service) {

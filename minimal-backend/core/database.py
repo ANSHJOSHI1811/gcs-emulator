@@ -293,6 +293,62 @@ class GKEAddon(Base):
 
 
 # ──────────────────────────────────────────────
+# Cloud Run + Artifact Registry
+# ──────────────────────────────────────────────
+
+class CloudRunService(Base):
+    """Cloud Run service (simulated)"""
+    __tablename__ = "cloud_run_services"
+
+    id                  = Column(Integer, primary_key=True, autoincrement=True)
+    name                = Column(String, nullable=False)
+    project_id          = Column(String, nullable=False)
+    location            = Column(String, nullable=False)
+    status              = Column(String, default="ACTIVE")
+    ingress             = Column(String, default="all")
+    uri                 = Column(String)
+    latest_ready_revision = Column(String)
+    traffic             = Column(JSON, default=list)  # [{revision, percent}]
+    labels              = Column(JSON, default=dict)
+    annotations         = Column(JSON, default=dict)
+    created_at          = Column(DateTime, default=datetime.utcnow)
+    updated_at          = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
+class CloudRunRevision(Base):
+    """Cloud Run revision (simulated)"""
+    __tablename__ = "cloud_run_revisions"
+
+    id                  = Column(Integer, primary_key=True, autoincrement=True)
+    name                = Column(String, nullable=False)
+    service_name        = Column(String, nullable=False)
+    project_id          = Column(String, nullable=False)
+    location            = Column(String, nullable=False)
+    image               = Column(String, nullable=False)
+    container_port      = Column(Integer, default=8080)
+    status              = Column(String, default="READY")
+    container_id        = Column(String)
+    host_port           = Column(Integer)
+    env_vars            = Column(JSON, default=list)  # [{"name":"K","value":"V"}]
+    percent_traffic     = Column(Integer, default=100)
+    created_at          = Column(DateTime, default=datetime.utcnow)
+
+
+class ArtifactRepository(Base):
+    """Artifact Registry repository metadata (simulated)"""
+    __tablename__ = "artifact_repositories"
+
+    id                  = Column(Integer, primary_key=True, autoincrement=True)
+    name                = Column(String, nullable=False)  # repository id
+    project_id          = Column(String, nullable=False)
+    location            = Column(String, nullable=False)
+    format              = Column(String, default="DOCKER")
+    description         = Column(String)
+    labels              = Column(JSON, default=dict)
+    created_at          = Column(DateTime, default=datetime.utcnow)
+
+
+# ──────────────────────────────────────────────
 # Sprint 1 — Compute Engine new resources
 # ──────────────────────────────────────────────
 
