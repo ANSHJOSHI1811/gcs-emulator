@@ -202,9 +202,20 @@ def create_sa_key(project: str, email: str, db: Session = Depends(get_db)):
     }
 
 
+@router.post("/projects/-/serviceAccounts/{email:path}/keys")
+def create_sa_key_global(email: str, db: Session = Depends(get_db)):
+    """Support gcloud's projects/- alias."""
+    project_from_email = email.split("@")[-1].split(".")[0]
+    return create_sa_key(project_from_email, email, db)
+
+
 @router.delete("/projects/{project}/serviceAccounts/{email:path}/keys/{key_id}")
 def delete_sa_key(project: str, email: str, key_id: str, db: Session = Depends(get_db)):
-    k = db.query(ServiceAccountKey).filter_by(id=key_id, service_account_email=email).first()
+    k = db.query(ServiceAccountKey).filter_by(
+        id=key_id,
+        service_account_email=email,
+        project_id=project
+    ).first()
     if not k:
         raise HTTPException(404, "Key not found")
     db.delete(k)

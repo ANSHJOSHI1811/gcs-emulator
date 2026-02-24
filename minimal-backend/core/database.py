@@ -93,6 +93,7 @@ class Subnet(Base):
     
     id = Column(Integer, primary_key=True, autoincrement=True)
     name = Column(String, nullable=False)
+    project_id = Column(String)  # Added for project scoping/isolation
     network = Column(String, nullable=False)  # Network name
     region = Column(String, nullable=False)
     ip_cidr_range = Column(String, nullable=False)  # e.g., "10.0.1.0/24"
@@ -461,6 +462,7 @@ def _run_migrations() -> None:
         ("management_auto_upgrade", "BOOLEAN DEFAULT 1"),
     ]
     new_subnet_cols = [
+        ("project_id",                 "VARCHAR"),
         ("enable_flow_logs",           "BOOLEAN DEFAULT 0"),
         ("private_ip_google_access",   "BOOLEAN DEFAULT 0"),
     ]

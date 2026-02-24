@@ -251,7 +251,7 @@ const RoutesPage = () => {
             <div className="flex-1">
               <p className="text-[13px]">{error}</p>
               <button
-                onClick={loadData}
+                onClick={() => loadData(true)}
                 className="mt-2 text-[13px] text-blue-600 hover:underline font-medium"
               >
                 Try again

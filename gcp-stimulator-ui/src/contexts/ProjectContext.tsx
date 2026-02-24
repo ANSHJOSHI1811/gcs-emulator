@@ -1,5 +1,6 @@
 import { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 import apiClient from '../api/client';
+import { PROJECT_ID } from '../api/client';
 
 interface Project {
   projectId: string;
@@ -22,7 +23,7 @@ const ProjectContext = createContext<ProjectContextType | undefined>(undefined);
 
 export function ProjectProvider({ children }: { children: ReactNode }) {
   const [currentProject, setCurrentProjectState] = useState<string>(() => {
-    return localStorage.getItem('gcp-stimulator-project') || 'taskmanager-app-001';
+    return localStorage.getItem('gcp-stimulator-project') || PROJECT_ID;
   });
   const [projects, setProjects] = useState<Project[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -31,17 +32,34 @@ export function ProjectProvider({ children }: { children: ReactNode }) {
     try {
       setIsLoading(true);
       const response = await apiClient.get('/cloudresourcemanager/v1/projects');
-      setProjects(response.data.projects || []);
-      
-      // If current project doesn't exist, switch to first available or demo-project
-      const projectIds = response.data.projects.map((p: Project) => p.projectId);
-      if (!projectIds.includes(currentProject)) {
-        const fallbackProject = projectIds.length > 0 ? projectIds[0] : 'demo-project';
-        setCurrentProject(fallbackProject);
-      }
+      const apiProjects: Project[] = response.data.projects || [];
+
+      // Keep the currently selected project visible even when CRM list is empty/out-of-sync.
+      const hasCurrent = apiProjects.some((p) => p.projectId === currentProject);
+      const mergedProjects = hasCurrent || !currentProject
+        ? apiProjects
+        : [
+            {
+              projectId: currentProject,
+              name: currentProject,
+              projectNumber: '0',
+              lifecycleState: 'ACTIVE',
+            },
+            ...apiProjects,
+          ];
+
+      setProjects(mergedProjects);
     } catch (error) {
       console.error('Failed to fetch projects:', error);
-      setProjects([]);
+      // Keep current project selectable even if project-list endpoint is temporarily down.
+      setProjects([
+        {
+          projectId: currentProject,
+          name: currentProject,
+          projectNumber: '0',
+          lifecycleState: 'ACTIVE',
+        },
+      ]);
     } finally {
       setIsLoading(false);
     }

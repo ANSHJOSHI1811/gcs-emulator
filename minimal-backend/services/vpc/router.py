@@ -165,11 +165,11 @@ def ensure_default_network(db: Session, project: str):
         _create_igw_route(db, project, "default")
 
     # Ensure at least one subnet
-    sn = db.query(Subnet).filter_by(network="default", region="us-central1").first()
+    sn = db.query(Subnet).filter_by(project_id=project, network="default", region="us-central1").first()
     if not sn:
         subnet_cidr = "10.128.0.0/20"
         sn = Subnet(
-            name="default-subnet-us-central1", network="default",
+            name="default-subnet-us-central1", project_id=project, network="default",
             region="us-central1", ip_cidr_range=subnet_cidr,
             gateway_ip=get_gateway_ip(subnet_cidr), next_available_ip=2,
         )
@@ -220,12 +220,16 @@ def create_network(project: str, body: CreateNetworkRequest, db: Session = Depen
     from docker_manager import create_docker_network_with_cidr
     from region_subnets import get_auto_mode_subnets, is_auto_mode_cidr
 
-    if not validate_cidr(body.IPv4Range):
-        raise HTTPException(400, f"Invalid CIDR: {body.IPv4Range}")
+    # Choose a non-overlapping CIDR; fall back to 10.200.0.0/16 to avoid colliding with default 10.128.0.0/16
+    cidr_input = body.IPv4Range or "10.200.0.0/16"
+    if cidr_input == "10.128.0.0/16":
+        cidr_input = "10.200.0.0/16"
+    if not validate_cidr(cidr_input):
+        raise HTTPException(400, f"Invalid CIDR: {cidr_input}")
     if db.query(Network).filter_by(project_id=project, name=body.name).first():
         raise HTTPException(409, f"Network {body.name} already exists")
 
-    cidr = "10.128.0.0/9" if body.autoCreateSubnetworks else body.IPv4Range
+    cidr = "10.200.0.0/16" if body.autoCreateSubnetworks else cidr_input
     docker_net_name = f"gcp-vpc-{project}-{body.name}"
 
     try:
@@ -246,7 +250,7 @@ def create_network(project: str, body: CreateNetworkRequest, db: Session = Depen
     if body.autoCreateSubnetworks and is_auto_mode_cidr(cidr):
         for ri in get_auto_mode_subnets():
             sn = Subnet(
-                name=f"{body.name}-{ri['name']}", network=body.name,
+                name=f"{body.name}-{ri['name']}", project_id=project, network=body.name,
                 region=ri["name"], ip_cidr_range=ri["cidr"],
                 gateway_ip=get_gateway_ip(ri["cidr"]), next_available_ip=2,
             )
@@ -276,7 +280,7 @@ def delete_network(project: str, network_name: str, db: Session = Depends(get_db
             pass
 
     db.query(Route).filter_by(project_id=project, network=network_name).delete()
-    db.query(Subnet).filter_by(network=network_name).delete()
+    db.query(Subnet).filter_by(project_id=project, network=network_name).delete()
     db.delete(n)
     db.commit()
     return _op(project, "delete",
@@ -289,8 +293,7 @@ def delete_network(project: str, network_name: str, db: Session = Depends(get_db
 
 @router.get("/projects/{project}/aggregated/subnetworks")
 def list_subnets_aggregated(project: str, db: Session = Depends(get_db)):
-    nets = {n.name for n in db.query(Network).filter_by(project_id=project).all()}
-    subnets = db.query(Subnet).filter(Subnet.network.in_(nets)).all()
+    subnets = db.query(Subnet).filter_by(project_id=project).all()
     items: dict = {}
     for s in subnets:
         key = f"regions/{s.region}"
@@ -301,14 +304,14 @@ def list_subnets_aggregated(project: str, db: Session = Depends(get_db)):
 
 @router.get("/projects/{project}/regions/{region}/subnetworks")
 def list_subnets(project: str, region: str, db: Session = Depends(get_db)):
-    subnets = db.query(Subnet).filter_by(region=region).all()
+    subnets = db.query(Subnet).filter_by(project_id=project, region=region).all()
     return {"kind": "compute#subnetworkList",
             "items": [_subnet_resource(s, project) for s in subnets]}
 
 
 @router.get("/projects/{project}/regions/{region}/subnetworks/{subnet_name}")
 def get_subnet(project: str, region: str, subnet_name: str, db: Session = Depends(get_db)):
-    s = db.query(Subnet).filter_by(name=subnet_name, region=region).first()
+    s = db.query(Subnet).filter_by(project_id=project, name=subnet_name, region=region).first()
     if not s:
         raise HTTPException(404, f"Subnet {subnet_name} not found")
     return _subnet_resource(s, project)
@@ -333,16 +336,16 @@ def create_subnet(project: str, region: str, body: CreateSubnetRequest, db: Sess
         raise HTTPException(400, "CIDR version mismatch")
 
     # overlap check
-    for existing in db.query(Subnet).filter_by(network=network_name).all():
+    for existing in db.query(Subnet).filter_by(project_id=project, network=network_name).all():
         if ipaddress.ip_network(body.ipCidrRange, strict=False).overlaps(
                 ipaddress.ip_network(existing.ip_cidr_range, strict=False)):
             raise HTTPException(400, f"Overlaps with subnet {existing.name} ({existing.ip_cidr_range})")
 
-    if db.query(Subnet).filter_by(name=body.name, region=region).first():
+    if db.query(Subnet).filter_by(project_id=project, name=body.name, region=region).first():
         raise HTTPException(409, f"Subnet {body.name} already exists")
 
     sn = Subnet(
-        name=body.name, network=network_name, region=region,
+        name=body.name, project_id=project, network=network_name, region=region,
         ip_cidr_range=body.ipCidrRange,
         gateway_ip=get_gateway_ip(body.ipCidrRange), next_available_ip=2,
     )
@@ -358,7 +361,7 @@ def create_subnet(project: str, region: str, body: CreateSubnetRequest, db: Sess
 def patch_subnet(project: str, region: str, subnet_name: str,
                  body: PatchSubnetRequest, db: Session = Depends(get_db)):
     """Toggle flow logs, expand CIDR, toggle Private Google Access."""
-    s = db.query(Subnet).filter_by(name=subnet_name, region=region).first()
+    s = db.query(Subnet).filter_by(project_id=project, name=subnet_name, region=region).first()
     if not s:
         raise HTTPException(404, f"Subnet {subnet_name} not found")
 
@@ -386,7 +389,7 @@ def patch_subnet(project: str, region: str, subnet_name: str,
 
 @router.delete("/projects/{project}/regions/{region}/subnetworks/{subnet_name}")
 def delete_subnet(project: str, region: str, subnet_name: str, db: Session = Depends(get_db)):
-    s = db.query(Subnet).filter_by(name=subnet_name, region=region).first()
+    s = db.query(Subnet).filter_by(project_id=project, name=subnet_name, region=region).first()
     if not s:
         raise HTTPException(404, f"Subnet {subnet_name} not found")
     if db.query(Instance).filter_by(subnet=subnet_name).first():
@@ -471,14 +474,14 @@ def delete_firewall(project: str, firewall_name: str, db: Session = Depends(get_
 # Routes
 # ────────────────────────────────────────────────────────
 
-@router.get("/compute/v1/projects/{project}/global/routes")
+@router.get("/projects/{project}/global/routes")
 def list_routes(project: str, db: Session = Depends(get_db)):
     routes = db.query(Route).filter_by(project_id=project).all()
     return {"kind": "compute#routeList",
             "items": [_route_resource(r, project) for r in routes]}
 
 
-@router.get("/compute/v1/projects/{project}/global/routes/{route_name}")
+@router.get("/projects/{project}/global/routes/{route_name}")
 def get_route(project: str, route_name: str, db: Session = Depends(get_db)):
     r = db.query(Route).filter_by(project_id=project, name=route_name).first()
     if not r:
@@ -486,7 +489,7 @@ def get_route(project: str, route_name: str, db: Session = Depends(get_db)):
     return _route_resource(r, project)
 
 
-@router.post("/compute/v1/projects/{project}/global/routes")
+@router.post("/projects/{project}/global/routes")
 def create_route(project: str, body: CreateRouteRequest, db: Session = Depends(get_db)):
     if db.query(Route).filter_by(project_id=project, name=body.name).first():
         raise HTTPException(409, f"Route {body.name} already exists")
@@ -503,7 +506,7 @@ def create_route(project: str, body: CreateRouteRequest, db: Session = Depends(g
                f"https://www.googleapis.com/compute/v1/projects/{project}/global/routes/{body.name}")
 
 
-@router.patch("/compute/v1/projects/{project}/global/routes/{route_name}")
+@router.patch("/projects/{project}/global/routes/{route_name}")
 def patch_route(project: str, route_name: str, body: CreateRouteRequest, db: Session = Depends(get_db)):
     r = db.query(Route).filter_by(project_id=project, name=route_name).first()
     if not r:
@@ -519,7 +522,7 @@ def patch_route(project: str, route_name: str, body: CreateRouteRequest, db: Ses
                f"https://www.googleapis.com/compute/v1/projects/{project}/global/routes/{route_name}")
 
 
-@router.delete("/compute/v1/projects/{project}/global/routes/{route_name}")
+@router.delete("/projects/{project}/global/routes/{route_name}")
 def delete_route(project: str, route_name: str, db: Session = Depends(get_db)):
     r = db.query(Route).filter_by(project_id=project, name=route_name).first()
     if not r:

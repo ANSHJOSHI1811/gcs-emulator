@@ -1,11 +1,36 @@
 import axios, { AxiosError } from 'axios';
 
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://127.0.0.1:8080';
-export const PROJECT_ID = import.meta.env.VITE_PROJECT_ID || 'taskmanager-app-001';
+const browserHost =
+  typeof window !== 'undefined' && window.location?.hostname
+    ? window.location.hostname
+    : '127.0.0.1';
+
+const isLocalHost = (host: string) => host === 'localhost' || host === '127.0.0.1';
+
+const resolveApiBaseUrl = () => {
+  const configured = import.meta.env.VITE_API_BASE_URL?.trim();
+  if (configured) {
+    try {
+      const parsed = new URL(configured);
+      if (!isLocalHost(browserHost) && isLocalHost(parsed.hostname)) {
+        parsed.hostname = browserHost;
+      }
+      return parsed.toString().replace(/\/$/, '');
+    } catch {
+      return configured.replace(/\/$/, '');
+    }
+  }
+
+  // Default to relative proxy path for both local dev and containerized deployments.
+  return '/api';
+};
+
+const API_BASE_URL = resolveApiBaseUrl();
+export const PROJECT_ID = import.meta.env.VITE_PROJECT_ID || 'demo-project';
 
 // Function to get current project from localStorage
 export const getCurrentProject = () => {
-  return localStorage.getItem('gcp-stimulator-project') || 'taskmanager-app-001';
+  return localStorage.getItem('gcp-stimulator-project') || PROJECT_ID;
 };
 
 export const apiClient = axios.create({
@@ -19,6 +44,10 @@ export const apiClient = axios.create({
 // Request interceptor
 apiClient.interceptors.request.use(
   (config) => {
+    // Normalize to relative paths so baseURL prefixes (e.g. /api) are honored.
+    if (typeof config.url === 'string' && config.url.startsWith('/')) {
+      config.url = config.url.slice(1);
+    }
     // console.log(`[${config.method?.toUpperCase()}] ${config.url}`);
     return config;
   },

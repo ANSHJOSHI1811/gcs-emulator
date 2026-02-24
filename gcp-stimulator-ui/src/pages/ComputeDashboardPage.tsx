@@ -71,11 +71,11 @@ const ComputeDashboardPage = () => {
   const getNetworkName = (instance: Instance) => instance.networkInterfaces?.[0]?.network?.split('/').pop() || 'default';
   const getSubnetName = (instance: Instance) => instance.networkInterfaces?.[0]?.subnetwork?.split('/').pop() || '-';
 
-  const getDisplayedTags = () => {
+  const getDisplayedTags = (): string[] => {
     if (editingTags) return pendingTags;
     if (!selectedInstance) return [];
     const t = (selectedInstance as any).tags;
-    return Array.isArray(t) ? t : (t?.items || []);
+    return Array.isArray(t) ? (t as string[]) : ((t?.items || []) as string[]);
   };
   
   const getMachineTypeDetails = (machineType: string) => {

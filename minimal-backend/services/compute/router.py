@@ -6,6 +6,7 @@ instance metadata, and serial port output.
 """
 import random
 import ipaddress
+import hashlib
 from datetime import datetime
 from typing import Any, Dict
 
@@ -156,9 +157,12 @@ def wait_operation(project: str, zone: str, operation: str):
 @router.get("/projects/{project}")
 def get_project(project: str):
     """Return project info - gcloud CLI uses this for validation."""
+    # gcloud expects numeric project id field.
+    # Use a deterministic digest so IDs stay stable across process restarts.
+    numeric_id = str(int.from_bytes(hashlib.sha1(project.encode("utf-8")).digest()[:6], "big"))
     return {
         "kind": "compute#project",
-        "id": project,
+        "id": numeric_id,
         "name": project,
         "selfLink": f"https://www.googleapis.com/compute/v1/projects/{project}",
         "defaultServiceAccount": f"{project}@developer.gserviceaccount.com",
@@ -266,8 +270,8 @@ async def create_instance(project: str, zone: str, body: dict, db: Session = Dep
     if existing:
         raise HTTPException(409, f"Instance {name} already exists")
 
-    # Resolve network/subnet
-    network_name, subnet_name = "default", "default"
+    # Resolve network/subnet from the first interface (same behavior as gcloud payloads)
+    network_name, subnet_name = None, "default"
     if body.get("networkInterfaces"):
         net = body["networkInterfaces"][0].get("network", "")
         if net:
@@ -279,10 +283,49 @@ async def create_instance(project: str, zone: str, body: dict, db: Session = Dep
     # Resolve subnet by name or default to the subnet in the zone's region
     region = zone.rsplit('-', 1)[0]
     if subnet_name == "default":
-        subnet_record = db.query(Subnet).filter_by(network=network_name, region=region).first()
+        network_name = network_name or "default"
+        subnet_record = db.query(Subnet).filter_by(
+            project_id=project,
+            network=network_name,
+            region=region
+        ).first()
     else:
-        subnet_record = db.query(Subnet).filter_by(name=subnet_name).first()
+        if network_name:
+            subnet_record = db.query(Subnet).filter_by(
+                project_id=project,
+                network=network_name,
+                name=subnet_name
+            ).first()
+        else:
+            # Network omitted: infer network from subnet record.
+            subnet_record = db.query(Subnet).filter_by(
+                project_id=project,
+                name=subnet_name
+            ).first()
+            if subnet_record:
+                network_name = subnet_record.network
 
+    if not subnet_record:
+        # Backward-compatibility path for legacy rows created before project_id existed.
+        if subnet_name == "default":
+            subnet_record = db.query(Subnet).filter(
+                Subnet.project_id.is_(None),
+                Subnet.network == network_name,
+                Subnet.region == region,
+            ).first()
+        elif network_name:
+            subnet_record = db.query(Subnet).filter(
+                Subnet.project_id.is_(None),
+                Subnet.network == network_name,
+                Subnet.name == subnet_name,
+            ).first()
+        else:
+            subnet_record = db.query(Subnet).filter(
+                Subnet.project_id.is_(None),
+                Subnet.name == subnet_name,
+            ).first()
+            if subnet_record:
+                network_name = subnet_record.network
     if not subnet_record:
         raise HTTPException(404, f"Subnet '{subnet_name}' not found")
 

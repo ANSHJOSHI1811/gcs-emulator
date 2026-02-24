@@ -25,31 +25,31 @@ interface SubnetInfo {
 }
 
 interface CloudRouter {
-  id: number;
+  id: number | string;
   name: string;
   region: string;
   network: string;
-  bgp_asn?: number;
+  bgpAsn?: number;
   description?: string;
-  created_at?: string;
+  creationTimestamp?: string;
 }
 
 interface CloudNAT {
-  id: number;
+  id?: number | string;
   name: string;
-  router_name: string;
+  routerName: string;
   region: string;
-  nat_ip_allocate_option?: string;
-  source_subnetwork_option?: string;
+  natIpAllocateOption?: string;
+  sourceSubnetworkIpRangesToNat?: string;
 }
 
 interface VPCPeering {
-  id: number;
+  id?: number | string;
   name: string;
   network: string;
-  peer_network: string;
+  peerNetwork: string;
   state: string;
-  exchange_subnet_routes?: boolean;
+  exchangeSubnetRoutes?: boolean;
 }
 
 const VPCDashboardPage = () => {
@@ -76,17 +76,17 @@ const VPCDashboardPage = () => {
 
   // Router form
   const [showCreateRouter, setShowCreateRouter] = useState(false);
-  const [routerForm, setRouterForm] = useState({ name: '', region: 'us-central1', network: 'default', bgp_asn: 64512 });
+  const [routerForm, setRouterForm] = useState({ name: '', region: 'us-central1', network: 'default', bgpAsn: 64512 });
   const [creatingRouter, setCreatingRouter] = useState(false);
 
   // NAT form
   const [showCreateNAT, setShowCreateNAT] = useState(false);
-  const [natForm, setNatForm] = useState({ name: '', router_name: '', region: 'us-central1' });
+  const [natForm, setNatForm] = useState({ name: '', routerName: '', region: 'us-central1' });
   const [creatingNAT, setCreatingNAT] = useState(false);
 
   // Peering form
   const [showCreatePeering, setShowCreatePeering] = useState(false);
-  const [peeringForm, setPeeringForm] = useState({ name: '', network: 'default', peer_network: '' });
+  const [peeringForm, setPeeringForm] = useState({ name: '', network: 'default', peerNetwork: '' });
   const [creatingPeering, setCreatingPeering] = useState(false);
 
   useEffect(() => {
@@ -99,24 +99,55 @@ const VPCDashboardPage = () => {
     return () => clearInterval(interval);
   }, [currentProject]);
 
+  const extractLastPathSegment = (value?: string) => {
+    if (!value) return '';
+    return value.split('/').filter(Boolean).pop() || value;
+  };
+
   const loadRouters = async () => {
     try {
       const res = await apiClient.get(`/compute/v1/projects/${currentProject}/regions/us-central1/routers`);
-      setRouters(res.data.items || []);
+      const mappedRouters: CloudRouter[] = (res.data.items || []).map((router: any) => ({
+        id: router.id,
+        name: router.name,
+        region: extractLastPathSegment(router.region) || router.region,
+        network: extractLastPathSegment(router.network) || router.network,
+        bgpAsn: router.bgp?.asn ?? router.bgpAsn,
+        description: router.description,
+        creationTimestamp: router.creationTimestamp,
+      }));
+      setRouters(mappedRouters);
     } catch { /* silent */ }
   };
 
   const loadNATsForRouter = async (routerName: string, region: string) => {
     try {
       const res = await apiClient.get(`/compute/v1/projects/${currentProject}/regions/${region}/routers/${routerName}/nats`);
-      setNats(res.data.items || []);
+      const mappedNats: CloudNAT[] = (res.data.items || []).map((nat: any) => ({
+        id: nat.id,
+        name: nat.name,
+        routerName: nat.routerName || nat.router_name || routerName,
+        region: nat.region || region,
+        natIpAllocateOption: nat.natIpAllocateOption || nat.nat_ip_allocate_option,
+        sourceSubnetworkIpRangesToNat:
+          nat.sourceSubnetworkIpRangesToNat || nat.source_subnetwork_option,
+      }));
+      setNats(mappedNats);
     } catch { /* silent */ }
   };
 
   const loadPeerings = async () => {
     try {
       const res = await apiClient.get(`/compute/v1/projects/${currentProject}/global/networks/default/peerings`);
-      setPeerings(res.data.items || []);
+      const mappedPeerings: VPCPeering[] = (res.data.items || []).map((peering: any) => ({
+        id: peering.id,
+        name: peering.name,
+        network: peering.network,
+        peerNetwork: peering.peerNetwork || peering.peer_network,
+        state: peering.state,
+        exchangeSubnetRoutes: peering.exchangeSubnetRoutes ?? peering.exchange_subnet_routes,
+      }));
+      setPeerings(mappedPeerings);
     } catch { /* silent */ }
   };
 
@@ -124,9 +155,13 @@ const VPCDashboardPage = () => {
     if (!routerForm.name.trim()) return;
     try {
       setCreatingRouter(true);
-      await apiClient.post(`/compute/v1/projects/${currentProject}/regions/${routerForm.region}/routers`, routerForm);
+      await apiClient.post(`/compute/v1/projects/${currentProject}/regions/${routerForm.region}/routers`, {
+        name: routerForm.name,
+        network: routerForm.network,
+        bgpAsn: routerForm.bgpAsn,
+      });
       setShowCreateRouter(false);
-      setRouterForm({ name: '', region: 'us-central1', network: 'default', bgp_asn: 64512 });
+      setRouterForm({ name: '', region: 'us-central1', network: 'default', bgpAsn: 64512 });
       loadRouters();
     } catch (err: any) {
       alert(err.response?.data?.detail || 'Failed to create router');
@@ -146,16 +181,20 @@ const VPCDashboardPage = () => {
   };
 
   const handleCreateNAT = async () => {
-    if (!natForm.name.trim() || !natForm.router_name.trim()) return;
+    if (!natForm.name.trim() || !natForm.routerName.trim()) return;
     try {
       setCreatingNAT(true);
       await apiClient.post(
-        `/compute/v1/projects/${currentProject}/regions/${natForm.region}/routers/${natForm.router_name}/nats`,
-        { name: natForm.name, region: natForm.region, router_name: natForm.router_name, nat_ip_allocate_option: 'AUTO_ONLY', source_subnetwork_option: 'ALL_SUBNETWORKS_ALL_IP_RANGES' }
+        `/compute/v1/projects/${currentProject}/regions/${natForm.region}/routers/${natForm.routerName}/nats`,
+        {
+          name: natForm.name,
+          natIpAllocateOption: 'AUTO_ONLY',
+          sourceSubnetworkIpRangesToNat: 'ALL_SUBNETWORKS_ALL_IP_RANGES',
+        }
       );
       setShowCreateNAT(false);
-      setNatForm({ name: '', router_name: '', region: 'us-central1' });
-      loadNATsForRouter(natForm.router_name, natForm.region);
+      setNatForm({ name: '', routerName: '', region: 'us-central1' });
+      loadNATsForRouter(natForm.routerName, natForm.region);
     } catch (err: any) {
       alert(err.response?.data?.detail || 'Failed to create NAT');
     } finally {
@@ -166,23 +205,27 @@ const VPCDashboardPage = () => {
   const handleDeleteNAT = async (nat: CloudNAT) => {
     if (!confirm(`Delete Cloud NAT "${nat.name}"?`)) return;
     try {
-      await apiClient.delete(`/compute/v1/projects/${currentProject}/regions/${nat.region}/routers/${nat.router_name}/nats/${nat.name}`);
-      loadNATsForRouter(nat.router_name, nat.region);
+      await apiClient.delete(`/compute/v1/projects/${currentProject}/regions/${nat.region}/routers/${nat.routerName}/nats/${nat.name}`);
+      loadNATsForRouter(nat.routerName, nat.region);
     } catch (err: any) {
       alert(err.response?.data?.detail || 'Failed to delete NAT');
     }
   };
 
   const handleAddPeering = async () => {
-    if (!peeringForm.name.trim() || !peeringForm.peer_network.trim()) return;
+    if (!peeringForm.name.trim() || !peeringForm.peerNetwork.trim()) return;
     try {
       setCreatingPeering(true);
       await apiClient.post(
         `/compute/v1/projects/${currentProject}/global/networks/${peeringForm.network}/addPeering`,
-        { name: peeringForm.name, network: peeringForm.network, peer_network: peeringForm.peer_network, exchange_subnet_routes: true }
+        {
+          name: peeringForm.name,
+          peerNetwork: peeringForm.peerNetwork,
+          exchangeSubnetRoutes: true,
+        }
       );
       setShowCreatePeering(false);
-      setPeeringForm({ name: '', network: 'default', peer_network: '' });
+      setPeeringForm({ name: '', network: 'default', peerNetwork: '' });
       loadPeerings();
     } catch (err: any) {
       alert(err.response?.data?.detail || 'Failed to add peering');
@@ -620,7 +663,7 @@ const VPCDashboardPage = () => {
                   </div>
                   <div>
                     <label className="text-[12px] font-medium text-gray-700 block mb-1">BGP ASN</label>
-                    <input value={routerForm.bgp_asn} onChange={e => setRouterForm(f => ({ ...f, bgp_asn: parseInt(e.target.value) || 64512 }))}
+                    <input value={routerForm.bgpAsn} onChange={e => setRouterForm(f => ({ ...f, bgpAsn: parseInt(e.target.value, 10) || 64512 }))}
                       type="number" className="w-full px-3 py-2 text-[13px] border border-gray-300 rounded-lg focus:outline-none focus:border-blue-400" />
                   </div>
                 </div>
@@ -653,7 +696,7 @@ const VPCDashboardPage = () => {
                         <td className="px-4 py-3 text-[13px] font-medium text-gray-900">{r.name}</td>
                         <td className="px-4 py-3 text-[13px] text-gray-600">{r.region}</td>
                         <td className="px-4 py-3 text-[13px] text-gray-600">{r.network}</td>
-                        <td className="px-4 py-3 text-[13px] font-mono text-gray-700">AS{r.bgp_asn || 64512}</td>
+                        <td className="px-4 py-3 text-[13px] font-mono text-gray-700">AS{r.bgpAsn || 64512}</td>
                         <td className="px-4 py-3 text-right">
                           <button onClick={() => handleDeleteRouter(r)} className="p-1.5 text-red-400 hover:text-red-600 hover:bg-red-50 rounded">
                             <Trash2 className="w-4 h-4" />
@@ -689,7 +732,7 @@ const VPCDashboardPage = () => {
                   </div>
                   <div>
                     <label className="text-[12px] font-medium text-gray-700 block mb-1">Cloud Router</label>
-                    <select value={natForm.router_name} onChange={e => setNatForm(f => ({ ...f, router_name: e.target.value }))}
+                    <select value={natForm.routerName} onChange={e => setNatForm(f => ({ ...f, routerName: e.target.value }))}
                       className="w-full px-3 py-2 text-[13px] border border-gray-300 rounded-lg focus:outline-none focus:border-blue-400">
                       <option value="">Select router...</option>
                       {routers.map(r => <option key={r.name} value={r.name}>{r.name} ({r.region})</option>)}
@@ -704,7 +747,7 @@ const VPCDashboardPage = () => {
                   </div>
                 </div>
                 <div className="flex gap-2">
-                  <button onClick={handleCreateNAT} disabled={creatingNAT || !natForm.name || !natForm.router_name}
+                  <button onClick={handleCreateNAT} disabled={creatingNAT || !natForm.name || !natForm.routerName}
                     className="px-4 py-2 bg-blue-600 text-white rounded-lg text-[13px] font-medium hover:bg-blue-700 disabled:opacity-50">
                     {creatingNAT ? 'Creating...' : 'Create NAT Gateway'}
                   </button>
@@ -731,9 +774,9 @@ const VPCDashboardPage = () => {
                     {nats.map(n => (
                       <tr key={n.id} className="hover:bg-gray-50">
                         <td className="px-4 py-3 text-[13px] font-medium text-gray-900">{n.name}</td>
-                        <td className="px-4 py-3 text-[13px] text-blue-600">{n.router_name}</td>
+                        <td className="px-4 py-3 text-[13px] text-blue-600">{n.routerName}</td>
                         <td className="px-4 py-3 text-[13px] text-gray-600">{n.region}</td>
-                        <td className="px-4 py-3 text-[13px] text-gray-600">{n.nat_ip_allocate_option || 'AUTO_ONLY'}</td>
+                        <td className="px-4 py-3 text-[13px] text-gray-600">{n.natIpAllocateOption || 'AUTO_ONLY'}</td>
                         <td className="px-4 py-3 text-right">
                           <button onClick={() => handleDeleteNAT(n)} className="p-1.5 text-red-400 hover:text-red-600 hover:bg-red-50 rounded">
                             <Trash2 className="w-4 h-4" />
@@ -776,13 +819,13 @@ const VPCDashboardPage = () => {
                   </div>
                   <div className="col-span-2">
                     <label className="text-[12px] font-medium text-gray-700 block mb-1">Peer Network (projects/PROJECT/global/networks/NETWORK)</label>
-                    <input value={peeringForm.peer_network} onChange={e => setPeeringForm(f => ({ ...f, peer_network: e.target.value }))}
+                    <input value={peeringForm.peerNetwork} onChange={e => setPeeringForm(f => ({ ...f, peerNetwork: e.target.value }))}
                       placeholder="projects/peer-project/global/networks/default"
                       className="w-full px-3 py-2 text-[13px] border border-gray-300 rounded-lg focus:outline-none focus:border-blue-400" />
                   </div>
                 </div>
                 <div className="flex gap-2">
-                  <button onClick={handleAddPeering} disabled={creatingPeering || !peeringForm.name || !peeringForm.peer_network}
+                  <button onClick={handleAddPeering} disabled={creatingPeering || !peeringForm.name || !peeringForm.peerNetwork}
                     className="px-4 py-2 bg-blue-600 text-white rounded-lg text-[13px] font-medium hover:bg-blue-700 disabled:opacity-50">
                     {creatingPeering ? 'Adding...' : 'Add Peering'}
                   </button>
@@ -809,7 +852,7 @@ const VPCDashboardPage = () => {
                       <tr key={p.id} className="hover:bg-gray-50">
                         <td className="px-4 py-3 text-[13px] font-medium text-gray-900">{p.name}</td>
                         <td className="px-4 py-3 text-[13px] text-gray-600">{p.network}</td>
-                        <td className="px-4 py-3 text-[13px] font-mono text-gray-600 text-xs">{p.peer_network}</td>
+                        <td className="px-4 py-3 text-[13px] font-mono text-gray-600 text-xs">{p.peerNetwork}</td>
                         <td className="px-4 py-3">
                           <span className={`inline-flex px-2 py-0.5 rounded text-[11px] font-medium ${
                             p.state === 'ACTIVE' ? 'bg-green-100 text-green-700' : 'bg-yellow-100 text-yellow-700'

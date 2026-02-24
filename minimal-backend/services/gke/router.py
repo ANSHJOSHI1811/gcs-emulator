@@ -502,7 +502,26 @@ def list_cluster_nodes(project: str, location: str, cluster_name: str, db: Sessi
     if not c:
         raise HTTPException(404, f"Cluster '{cluster_name}' not found")
     if not c.kubeconfig:
-        raise HTTPException(409, "Cluster kubeconfig not available yet")
+        # Demo-friendly fallback: surface synthetic nodes from node-pool sizing
+        # instead of returning 409 and breaking the frontend tables.
+        pools = db.query(GKENodePool).filter_by(
+            project_id=project, location=location, cluster_name=cluster_name
+        ).all()
+        nodes = []
+        for pool in pools:
+            pool_size = max(pool.node_count or 0, 0)
+            for idx in range(1, pool_size + 1):
+                nodes.append({
+                    "name": f"{cluster_name}-{pool.name}-{idx}",
+                    "status": "Ready",
+                    "roles": "worker",
+                    "age": pool.created_at.isoformat() + "Z" if pool.created_at else "",
+                    "version": c.master_version or "1.28.0",
+                    "internalIP": "",
+                    "osImage": "Container-Optimized OS (simulated)",
+                    "containerRuntime": "containerd://1.7 (simulated)",
+                })
+        return {"nodes": nodes, "simulated": True}
 
     with tempfile.NamedTemporaryFile(mode="w", suffix=".yaml", delete=False) as f:
         f.write(c.kubeconfig); kc_path = f.name
@@ -553,7 +572,33 @@ def exec_kubectl(
     if c.status != "RUNNING":
         raise HTTPException(400, f"Cluster is not RUNNING (status: {c.status})")
     if not c.kubeconfig:
-        raise HTTPException(409, "Kubeconfig not available yet")
+        # Demo-friendly fallback for environments where control-plane kubeconfig
+        # is not available yet (or Docker/k3s is stubbed out).
+        cmd = (body.command or "").strip()
+        if cmd.startswith("get nodes"):
+            pools = db.query(GKENodePool).filter_by(
+                project_id=project, location=location, cluster_name=cluster_name
+            ).all()
+            lines = ["NAME\tSTATUS\tROLES\tAGE\tVERSION"]
+            for pool in pools:
+                for idx in range(1, max(pool.node_count or 0, 0) + 1):
+                    lines.append(
+                        f"{cluster_name}-{pool.name}-{idx}\tReady\tworker\t1m\t{c.master_version or 'v1.28.0'}"
+                    )
+            return {"stdout": "\n".join(lines) + "\n", "stderr": "", "exit_code": 0, "simulated": True}
+        if cmd.startswith("get pods"):
+            out = (
+                "NAMESPACE\tNAME\tREADY\tSTATUS\tRESTARTS\tAGE\n"
+                "kube-system\tcoredns-sim-0\t1/1\tRunning\t0\t1m\n"
+                "kube-system\tmetrics-server-sim-0\t1/1\tRunning\t0\t1m\n"
+            )
+            return {"stdout": out, "stderr": "", "exit_code": 0, "simulated": True}
+        return {
+            "stdout": f"Simulated kubectl execution: {cmd}\n",
+            "stderr": "",
+            "exit_code": 0,
+            "simulated": True,
+        }
     return run_kubectl_command(c.kubeconfig, body.command)
 
 

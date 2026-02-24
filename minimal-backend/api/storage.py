@@ -623,7 +623,7 @@ def delete_object(bucket: str, object: str, db: Session = Depends(get_db)):
     if not db_obj:
         raise HTTPException(status_code=404, detail="Object not found")
     
-    file_path = f"{STORAGE_DIR}/{bucket}/{db_obj.name}"
+    file_path = db_obj.file_path or f"{STORAGE_DIR}/{bucket}/{db_obj.name}"
     if os.path.exists(file_path):
         os.remove(file_path)
     
@@ -1136,4 +1136,3 @@ def update_bucket_default_acl(
         "kind": "storage#bucketAccessControl",
         "acl": db_bucket.acl
     }
-

@@ -48,7 +48,7 @@ def create_project(project_data: ProjectCreate, db: Session = Depends(get_db)):
     db.refresh(project)
     
     # Create default network for the project
-    from api.vpc import ensure_default_network
+    from services.vpc.router import ensure_default_network
     try:
         ensure_default_network(db, project.id)
     except Exception as e:
