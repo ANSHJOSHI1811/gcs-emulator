@@ -1,4 +1,5 @@
 """Main FastAPI application"""
+import asyncio
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from services.compute.router import router as compute_router
@@ -8,6 +9,8 @@ from services.gke.router import router as gke_router
 from services.run.router import router as run_router
 from services.artifacts.router import router as artifacts_router
 from services.projects.router import router as projects_router
+from services.monitoring.router import router as monitoring_router, storage as monitoring_storage
+from services.monitoring.alert_evaluator import AlertPolicyEvaluator
 from api import storage  # storage remains in api/ (stable, 1100+ lines)
 import os
 
@@ -52,6 +55,10 @@ app.include_router(run_router, prefix="/run/v2", tags=["Cloud Run (alt)"])
 
 # Artifact Registry — artifactregistry.googleapis.com/v1
 app.include_router(artifacts_router, prefix="/v1", tags=["Artifact Registry"])
+
+# Cloud Monitoring — monitoring.googleapis.com/v3
+app.include_router(monitoring_router, prefix="/v3", tags=["Cloud Monitoring"])
+app.include_router(monitoring_router, prefix="/monitoring/v3", tags=["Cloud Monitoring (alt)"])
 
 
 def init_zones_and_machine_types(db):
@@ -107,7 +114,7 @@ def init_zones_and_machine_types(db):
 
 @app.on_event("startup")
 async def startup_event():
-    """Initialize database tables and default networks"""
+    """Initialize database tables, default networks, and background tasks"""
     from core.database import SessionLocal, Project, Base, engine
     from services.vpc.router import ensure_default_network
     
@@ -128,6 +135,11 @@ async def startup_event():
         print(f"⚠️  Error initializing: {e}")
     finally:
         db.close()
+    
+    # Start Cloud Monitoring alert evaluator
+    evaluator = AlertPolicyEvaluator(monitoring_storage)
+    asyncio.create_task(evaluator.start())
+    print("✅ Cloud Monitoring alert evaluator started")
 
 
 if __name__ == "__main__":
