@@ -11,6 +11,9 @@ from services.artifacts.router import router as artifacts_router
 from services.projects.router import router as projects_router
 from services.monitoring.router import router as monitoring_router, storage as monitoring_storage
 from services.monitoring.alert_evaluator import AlertPolicyEvaluator
+from services.compute.metric_publisher import ComputeMetricPublisher
+from services.gke.metric_publisher import GKEMetricPublisher
+from services.run.metric_publisher import CloudRunMetricPublisher
 from api import storage  # storage remains in api/ (stable, 1100+ lines)
 import os
 
@@ -140,6 +143,19 @@ async def startup_event():
     evaluator = AlertPolicyEvaluator(monitoring_storage)
     asyncio.create_task(evaluator.start())
     print("✅ Cloud Monitoring alert evaluator started")
+    
+    # Start metric publishers for Compute Engine, GKE, and Cloud Run
+    compute_publisher = ComputeMetricPublisher(storage, monitoring_storage)
+    asyncio.create_task(compute_publisher.start())
+    print("✅ Compute Engine metric publisher started")
+    
+    gke_publisher = GKEMetricPublisher(storage, monitoring_storage)
+    asyncio.create_task(gke_publisher.start())
+    print("✅ GKE metric publisher started")
+    
+    run_publisher = CloudRunMetricPublisher(storage, monitoring_storage)
+    asyncio.create_task(run_publisher.start())
+    print("✅ Cloud Run metric publisher started")
 
 
 if __name__ == "__main__":
