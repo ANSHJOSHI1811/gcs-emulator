@@ -15,6 +15,8 @@ from services.compute.metric_publisher import ComputeMetricPublisher
 from services.gke.metric_publisher import GKEMetricPublisher
 from services.run.metric_publisher import CloudRunMetricPublisher
 from services.pubsub.router import router as pubsub_router
+from services.autoscaling.router import router as autoscaling_router, storage as autoscaling_storage
+from services.autoscaling.evaluator import AutoscalingEvaluator
 from api import storage  # storage remains in api/ (stable, 1100+ lines)
 import os
 
@@ -67,6 +69,9 @@ app.include_router(monitoring_router, prefix="/monitoring/v3", tags=["Cloud Moni
 # Cloud Pub/Sub — pubsub.googleapis.com/v1
 app.include_router(pubsub_router, prefix="/v1", tags=["Cloud Pub/Sub"])
 app.include_router(pubsub_router, prefix="/pubsub/v1", tags=["Cloud Pub/Sub (alt)"])
+
+# Compute Engine Auto-Scaling — autoscaling.googleapis.com/v1
+app.include_router(autoscaling_router, prefix="/compute/v1", tags=["Autoscaling"])
 
 
 def init_zones_and_machine_types(db):
@@ -161,6 +166,11 @@ async def startup_event():
     run_publisher = CloudRunMetricPublisher(storage, monitoring_storage)
     asyncio.create_task(run_publisher.start())
     print("✅ Cloud Run metric publisher started")
+    
+    # Start Auto-Scaling evaluator
+    autoscaling_evaluator = AutoscalingEvaluator(autoscaling_storage, monitoring_storage, storage)
+    asyncio.create_task(autoscaling_evaluator.start())
+    print("✅ Auto-Scaling evaluator started")
 
 
 if __name__ == "__main__":
