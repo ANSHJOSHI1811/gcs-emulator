@@ -14,6 +14,7 @@ from services.monitoring.alert_evaluator import AlertPolicyEvaluator
 from services.compute.metric_publisher import ComputeMetricPublisher
 from services.gke.metric_publisher import GKEMetricPublisher
 from services.run.metric_publisher import CloudRunMetricPublisher
+from services.pubsub.router import router as pubsub_router
 from api import storage  # storage remains in api/ (stable, 1100+ lines)
 import os
 
@@ -62,6 +63,10 @@ app.include_router(artifacts_router, prefix="/v1", tags=["Artifact Registry"])
 # Cloud Monitoring — monitoring.googleapis.com/v3
 app.include_router(monitoring_router, prefix="/v3", tags=["Cloud Monitoring"])
 app.include_router(monitoring_router, prefix="/monitoring/v3", tags=["Cloud Monitoring (alt)"])
+
+# Cloud Pub/Sub — pubsub.googleapis.com/v1
+app.include_router(pubsub_router, prefix="/v1", tags=["Cloud Pub/Sub"])
+app.include_router(pubsub_router, prefix="/pubsub/v1", tags=["Cloud Pub/Sub (alt)"])
 
 
 def init_zones_and_machine_types(db):
