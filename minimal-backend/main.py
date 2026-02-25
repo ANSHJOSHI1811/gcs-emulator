@@ -17,6 +17,7 @@ from services.run.metric_publisher import CloudRunMetricPublisher
 from services.pubsub.router import router as pubsub_router
 from services.autoscaling.router import router as autoscaling_router, storage as autoscaling_storage
 from services.autoscaling.evaluator import AutoscalingEvaluator
+from services.secretmanager.router import router as secretmanager_router
 from api import storage  # storage remains in api/ (stable, 1100+ lines)
 import os
 
@@ -72,6 +73,10 @@ app.include_router(pubsub_router, prefix="/pubsub/v1", tags=["Cloud Pub/Sub (alt
 
 # Compute Engine Auto-Scaling — autoscaling.googleapis.com/v1
 app.include_router(autoscaling_router, prefix="/compute/v1", tags=["Autoscaling"])
+
+# Secret Manager — secretmanager.googleapis.com/v1
+app.include_router(secretmanager_router, prefix="/v1", tags=["Secret Manager"])
+app.include_router(secretmanager_router, prefix="/secretmanager/v1", tags=["Secret Manager (alt)"])
 
 
 def init_zones_and_machine_types(db):

@@ -96,6 +96,49 @@ def _mock_key_data(project: str, sa_email: str, key_id: str) -> str:
 
 
 # ────────────────────────────────────────────────────────
+# Phase 1: Default Service Accounts Initialization
+# ────────────────────────────────────────────────────────
+
+def _init_default_service_accounts(db: Session, project: str):
+    """Phase 1: Create default service accounts for a project"""
+    
+    default_accounts = [
+        {
+            "accountId": "default",
+            "displayName": "Default Service Account",
+            "description": "Default service account for GCE instances"
+        },
+        {
+            "accountId": "terraform",
+            "displayName": "Terraform Service Account",
+            "description": "Service account for infrastructure-as-code deployments"
+        },
+    ]
+    
+    for account_data in default_accounts:
+        email = f"{account_data['accountId']}@{project}.iam.gserviceaccount.com"
+        
+        # Check if account already exists
+        existing = db.query(ServiceAccount).filter_by(id=email).first()
+        if not existing:
+            sa = ServiceAccount(
+                id=email,
+                project_id=project,
+                email=email,
+                display_name=account_data.get("displayName"),
+                description=account_data.get("description"),
+                unique_id=str(random.randint(10 ** 20, 10 ** 21 - 1)),
+                disabled=False,
+                created_at=datetime.utcnow(),
+                updated_at=datetime.utcnow(),
+            )
+            db.add(sa)
+    
+    db.commit()
+    print(f"✅ Phase 1: Initialized default service accounts for project {project}")
+
+
+# ────────────────────────────────────────────────────────
 # Service Accounts
 # ────────────────────────────────────────────────────────
 

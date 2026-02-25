@@ -54,6 +54,13 @@ def create_project(project_data: ProjectCreate, db: Session = Depends(get_db)):
     except Exception as e:
         print(f"⚠️  Failed to create default network for {project.id}: {e}")
     
+    # Phase 1: Initialize default service accounts
+    from services.iam.router import _init_default_service_accounts
+    try:
+        _init_default_service_accounts(db, project.id)
+    except Exception as e:
+        print(f"⚠️  Failed to initialize service accounts for {project.id}: {e}")
+    
     return {
         "projectId": project.id,
         "name": project.name,

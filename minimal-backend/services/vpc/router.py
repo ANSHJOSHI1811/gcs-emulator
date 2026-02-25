@@ -136,6 +136,83 @@ def _create_subnet_route(db, project, network_name, subnet_name, subnet_cidr):
     db.commit()
 
 
+def _init_default_firewall_rules(db: Session, project: str, network_name: str = "default"):
+    """Phase 1: Create 5 default firewall rules for a network"""
+    
+    default_rules = [
+        {
+            "name": "allow-ssh",
+            "description": "Allow SSH from anywhere",
+            "priority": 65534,
+            "direction": "INGRESS",
+            "sourceRanges": ["0.0.0.0/0"],
+            "allowed": [{"IPProtocol": "tcp", "ports": ["22"]}]
+        },
+        {
+            "name": "allow-http",
+            "description": "Allow HTTP from anywhere",
+            "priority": 65534,
+            "direction": "INGRESS",
+            "sourceRanges": ["0.0.0.0/0"],
+            "allowed": [{"IPProtocol": "tcp", "ports": ["80"]}]
+        },
+        {
+            "name": "allow-https",
+            "description": "Allow HTTPS from anywhere",
+            "priority": 65534,
+            "direction": "INGRESS",
+            "sourceRanges": ["0.0.0.0/0"],
+            "allowed": [{"IPProtocol": "tcp", "ports": ["443"]}]
+        },
+        {
+            "name": "allow-internal",
+            "description": "Allow internal traffic within VPC",
+            "priority": 65534,
+            "direction": "INGRESS",
+            "sourceRanges": ["10.0.0.0/8"],
+            "allowed": [
+                {"IPProtocol": "tcp", "ports": ["0-65535"]},
+                {"IPProtocol": "udp", "ports": ["0-65535"]},
+                {"IPProtocol": "icmp"}
+            ]
+        },
+        {
+            "name": "allow-icmp",
+            "description": "Allow ICMP ping from anywhere",
+            "priority": 65534,
+            "direction": "INGRESS",
+            "sourceRanges": ["0.0.0.0/0"],
+            "allowed": [{"IPProtocol": "icmp"}]
+        }
+    ]
+    
+    for rule_data in default_rules:
+        # Check if rule already exists
+        existing = db.query(Firewall).filter_by(
+            project_id=project,
+            name=rule_data["name"]
+        ).first()
+        
+        if not existing:
+            rule = Firewall(
+                name=rule_data["name"],
+                network=network_name,
+                project_id=project,
+                description=rule_data["description"],
+                direction=rule_data["direction"],
+                priority=rule_data["priority"],
+                source_ranges=rule_data.get("sourceRanges"),
+                destination_ranges=rule_data.get("destinationRanges"),
+                allowed=rule_data.get("allowed"),
+                denied=rule_data.get("denied"),
+                disabled=False
+            )
+            db.add(rule)
+    
+    db.commit()
+    print(f"✅ Phase 1: Initialized 5 default firewall rules for project {project}")
+
+
 def ensure_default_network(db: Session, project: str):
     """Bootstrap default VPC + subnet if missing."""
     from docker_manager import create_docker_network_with_cidr
@@ -176,6 +253,10 @@ def ensure_default_network(db: Session, project: str):
         db.add(sn)
         db.commit()
         _create_subnet_route(db, project, "default", "default-subnet-us-central1", subnet_cidr)
+    
+    # Phase 1: Initialize default firewall rules
+    _init_default_firewall_rules(db, project, "default")
+    
     return default
 
 
