@@ -9,9 +9,11 @@ import sys
 import json
 import requests
 import time
+import subprocess
 from pathlib import Path
 from typing import Dict, Any, Generator
 from datetime import datetime
+from dataclasses import dataclass
 
 # Add minimal-backend to path so we can import it
 sys.path.insert(0, str(Path(__file__).parent.parent / "minimal-backend"))
@@ -23,11 +25,33 @@ TEST_REGION = os.getenv("TEST_REGION", "us-central1")
 TEST_ZONE = os.getenv("TEST_ZONE", "us-central1-a")
 TEST_DB_PATH = os.getenv("TEST_DB_PATH", "/tmp/gcs-stimulator-test.db")
 TEST_TIMEOUT = int(os.getenv("TEST_TIMEOUT", "30"))
+ENABLE_GCLOUD_TESTS = os.getenv("ENABLE_GCLOUD_TESTS", "true").lower() == "true"
 
 # Markers for test categorization
 pytest.mark.unit = pytest.mark.unit
 pytest.mark.integration = pytest.mark.integration
 pytest.mark.e2e = pytest.mark.e2e
+pytest.mark.api = pytest.mark.api
+pytest.mark.gcloud = pytest.mark.gcloud
+
+
+@dataclass
+class GCloudResult:
+    """Result of gcloud command execution"""
+    exit_code: int
+    stdout: str
+    stderr: str
+    
+    def is_success(self) -> bool:
+        """Check if command succeeded"""
+        return self.exit_code == 0
+    
+    def json(self) -> Dict[str, Any]:
+        """Parse stdout as JSON"""
+        try:
+            return json.loads(self.stdout)
+        except json.JSONDecodeError:
+            raise ValueError(f"Failed to parse gcloud output as JSON: {self.stdout}")
 
 
 class APIClient:
@@ -56,6 +80,11 @@ class APIClient:
         url = self._build_url(path)
         return self.session.patch(url, json=data, timeout=TEST_TIMEOUT, **kwargs)
     
+    def put(self, path: str, data: Dict = None, **kwargs) -> requests.Response:
+        """PUT request"""
+        url = self._build_url(path)
+        return self.session.put(url, json=data, timeout=TEST_TIMEOUT, **kwargs)
+    
     def delete(self, path: str, **kwargs) -> requests.Response:
         """DELETE request"""
         url = self._build_url(path)
@@ -79,6 +108,70 @@ class APIClient:
                     return True
             time.sleep(interval)
         return False
+    
+    def close(self):
+        """Close the session"""
+        self.session.close()
+
+
+class GCloudRunner:
+    """Helper class for running gcloud commands"""
+    
+    def __init__(self, project: str = TEST_PROJECT, zone: str = TEST_ZONE):
+        self.project = project
+        self.zone = zone
+        self.region = zone.rsplit("-", 1)[0] if zone else "us-central1"
+        self._check_available()
+    
+    def _check_available(self):
+        """Check if gcloud is available"""
+        try:
+            result = subprocess.run(["gcloud", "--version"], capture_output=True, timeout=5)
+            self.available = result.returncode == 0
+        except (FileNotFoundError, subprocess.TimeoutExpired):
+            self.available = False
+    
+    def run(self, command: str, format: str = "json") -> GCloudResult:
+        """Run gcloud command"""
+        if not self.available:
+            return GCloudResult(exit_code=127, stdout="", stderr="gcloud not available")
+        
+        full_command = f"gcloud {command}"
+        
+        # Add format unless specified
+        if format and "--format" not in command:
+            full_command += f" --format={format}"
+        
+        # Add project
+        if "--project" not in command:
+            full_command += f" --project={self.project}"
+        
+        try:
+            result = subprocess.run(
+                full_command,
+                shell=True,
+                capture_output=True,
+                text=True,
+                timeout=60
+            )
+            return GCloudResult(
+                exit_code=result.returncode,
+                stdout=result.stdout.strip(),
+                stderr=result.stderr.strip()
+            )
+        except subprocess.TimeoutExpired:
+            return GCloudResult(exit_code=1, stdout="", stderr="Timeout")
+        except Exception as e:
+            return GCloudResult(exit_code=1, stdout="", stderr=str(e))
+    
+    def set_project(self, project: str):
+        """Set active project"""
+        self.project = project
+    
+    def set_zone(self, zone: str):
+        """Set active zone"""
+        self.zone = zone
+        self.region = zone.rsplit("-", 1)[0]
 
 
 @pytest.fixture(scope="session")
@@ -239,17 +332,33 @@ def pytest_collection_modifyitems(config, items):
             item.add_marker(pytest.mark.unit)
 
 
+@pytest.fixture(scope="session")
+def gcloud_runner() -> GCloudRunner:
+    """Global gcloud runner for all tests"""
+    runner = GCloudRunner(TEST_PROJECT, TEST_ZONE)
+    if not runner.available and ENABLE_GCLOUD_TESTS:
+        print(f"\n⚠️  Warning: gcloud CLI not available. gcloud tests will be skipped.")
+    return runner
+
+
 # Test session info
 @pytest.fixture(scope="session", autouse=True)
 def test_session_info():
     """Print test session information"""
+    # Check gcloud availability
+    gcloud_runner = GCloudRunner(TEST_PROJECT, TEST_ZONE)
+    gcloud_status = "✓ Available" if gcloud_runner.available else "✗ Not available"
+    
     print(f"\n\n{'='*70}")
     print(f"  CloudTester Session Started")
     print(f"{'='*70}")
-    print(f"  API URL:       {TEST_API_URL}")
-    print(f"  Test Project:  {TEST_PROJECT}")
-    print(f"  Test Zone:     {TEST_ZONE}")
-    print(f"  Test Region:   {TEST_REGION}")
-    print(f"  DB Path:       {TEST_DB_PATH}")
-    print(f"  Timeout:       {TEST_TIMEOUT}s")
+    print(f"  API URL:         {TEST_API_URL}")
+    print(f"  Test Project:    {TEST_PROJECT}")
+    print(f"  Test Zone:       {TEST_ZONE}")
+    print(f"  Test Region:     {TEST_REGION}")
+    print(f"  DB Path:         {TEST_DB_PATH}")
+    print(f"  Timeout:         {TEST_TIMEOUT}s")
+    print(f"  GCloud:          {gcloud_status}")
+    print(f"  GCloud Tests:    {'Enabled ☁️ ' if ENABLE_GCLOUD_TESTS else 'Disabled'}")
     print(f"{'='*70}\n")
+

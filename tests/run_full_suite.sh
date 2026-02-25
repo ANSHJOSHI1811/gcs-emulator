@@ -1,12 +1,13 @@
 #!/bin/bash
-# CloudTester - Full Test Suite Runner
+# CloudTester - Full Test Suite Runner with HTML Reports
 # Runs the complete test suite across all services to check for regressions
-# Usage: ./tests/run_full_suite.sh [--parallel] [--coverage] [--marker MARKER]
+# Usage: ./tests/run_full_suite.sh [--parallel] [--coverage] [--gcloud] [--marker MARKER]
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
 TESTS_DIR="$SCRIPT_DIR/CloudTester/suites"
 ENV_FILE="$SCRIPT_DIR/.env-test"
+REPORTS_DIR="$PROJECT_ROOT/htmlcov"
 
 # Colors
 RED='\033[0;31m'
@@ -24,6 +25,7 @@ fi
 # Parse arguments
 PARALLEL_ENABLED=false
 COVERAGE_ENABLED=false
+GCLOUD_ENABLED=true
 MARKER=""
 
 while [[ $# -gt 0 ]]; do
@@ -34,6 +36,14 @@ while [[ $# -gt 0 ]]; do
             ;;
         --coverage)
             COVERAGE_ENABLED=true
+            shift
+            ;;
+        --gcloud)
+            GCLOUD_ENABLED=true
+            shift
+            ;;
+        --no-gcloud)
+            GCLOUD_ENABLED=false
             shift
             ;;
         --marker)
@@ -57,13 +67,21 @@ echo "  Project: $TEST_PROJECT"
 echo "  Zone: $TEST_ZONE"
 echo "  Parallel: $([ "$PARALLEL_ENABLED" = true ] && echo "Yes" || echo "No")"
 echo "  Coverage: $([ "$COVERAGE_ENABLED" = true ] && echo "Yes" || echo "No")"
+echo "  GCloud: $([ "$GCLOUD_ENABLED" = true ] && echo "Enabled ☁️ " || echo "Disabled")"
 if [ -n "$MARKER" ]; then
     echo "  Marker: $MARKER"
 fi
 echo ""
 
+# Create reports directory
+mkdir -p "$REPORTS_DIR"
+
 # Build pytest command
 PYTEST_ARGS="-v --tb=short --strict-markers"
+
+# Always generate HTML report
+PYTEST_ARGS="$PYTEST_ARGS --html=$REPORTS_DIR/full-suite-report.html --self-contained-html"
+echo -e "${YELLOW}📊 Generating HTML test report...${NC}"
 
 if [ "$PARALLEL_ENABLED" = true ]; then
     PYTEST_ARGS="$PYTEST_ARGS -n auto"
@@ -72,7 +90,16 @@ fi
 
 if [ "$COVERAGE_ENABLED" = true ]; then
     PYTEST_ARGS="$PYTEST_ARGS --cov=minimal-backend --cov-report=html --cov-report=term-missing"
-    echo -e "${YELLOW}📊 Collecting coverage...${NC}"
+    echo -e "${YELLOW}� Collecting code coverage...${NC}"
+fi
+
+# Enable gcloud integration by default
+if [ "$GCLOUD_ENABLED" = true ]; then
+    export ENABLE_GCLOUD_TESTS=true
+    echo -e "${YELLOW}☁️  GCloud integration enabled${NC}"
+else
+    export ENABLE_GCLOUD_TESTS=false
+    echo -e "${YELLOW}☁️  GCloud integration disabled${NC}"
 fi
 
 if [ -n "$MARKER" ]; then
@@ -117,11 +144,6 @@ echo -e "${BLUE}╠════════════════════�
 
 if [ $TEST_RESULT -eq 0 ]; then
     echo -e "${GREEN}║✓ All tests PASSED${NC}"
-    
-    if [ "$COVERAGE_ENABLED" = true ]; then
-        echo -e "${BLUE}║${NC}"
-        echo -e "${BLUE}║ Coverage Report: htmlcov/index.html${NC}"
-    fi
 else
     echo -e "${RED}║✗ Some tests FAILED${NC}"
     echo -e "${RED}║${NC}"
@@ -129,12 +151,23 @@ else
     grep -E "FAILED|ERROR" /tmp/full_suite_output.txt | head -20 || true
 fi
 
+echo -e "${BLUE}║${NC}"
+echo -e "${BLUE}║ 📊 Reports:${NC}"
+echo -e "${BLUE}║   Test Report:     htmlcov/full-suite-report.html${NC}"
+
+if [ "$COVERAGE_ENABLED" = true ]; then
+    echo -e "${BLUE}║   Coverage Report: htmlcov/index.html${NC}"
+fi
+
 echo -e "${BLUE}╚════════════════════════════════════════════════════════════════╝${NC}"
 echo ""
 
+echo -e "${CYAN}"
+echo "✅ Test report generated at: $REPORTS_DIR/full-suite-report.html"
 if [ "$COVERAGE_ENABLED" = true ]; then
-    echo -e "${CYAN}📊 Coverage report generated in: htmlcov/index.html${NC}"
-    echo ""
+    echo "✅ Coverage report generated at: $REPORTS_DIR/index.html"
 fi
+echo -e "${NC}"
+echo ""
 
 exit $TEST_RESULT
