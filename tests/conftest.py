@@ -120,6 +120,10 @@ class APIClient:
 class GCloudRunner:
     """Helper class for running gcloud commands"""
     
+    # Class-level cache for gcloud availability (check once per test session)
+    _availability_checked = False
+    _gcloud_available = False
+    
     def __init__(self, project: str = TEST_PROJECT, zone: str = TEST_ZONE):
         self.project = project
         self.zone = zone
@@ -127,12 +131,44 @@ class GCloudRunner:
         self._check_available()
     
     def _check_available(self):
-        """Check if gcloud is available"""
-        try:
-            result = subprocess.run(["gcloud", "--version"], capture_output=True, timeout=5)
-            self.available = result.returncode == 0
-        except (FileNotFoundError, subprocess.TimeoutExpired):
-            self.available = False
+        """Check if gcloud is available with retry logic and caching"""
+        # Use cached result if already checked
+        if GCloudRunner._availability_checked:
+            self.available = GCloudRunner._gcloud_available
+            return
+        
+        # Perform the check
+        max_retries = 3
+        for attempt in range(max_retries):
+            try:
+                result = subprocess.run(
+                    ["gcloud", "--version"], 
+                    capture_output=True, 
+                    timeout=10,
+                    env=os.environ.copy()
+                )
+                if result.returncode == 0:
+                    self.available = True
+                    GCloudRunner._gcloud_available = True
+                    GCloudRunner._availability_checked = True
+                    return
+            except FileNotFoundError:
+                self.available = False
+                GCloudRunner._gcloud_available = False
+                GCloudRunner._availability_checked = True
+                return
+            except subprocess.TimeoutExpired:
+                if attempt < max_retries - 1:
+                    time.sleep(0.5)
+                    continue
+                else:
+                    self.available = False
+                    GCloudRunner._gcloud_available = False
+                    GCloudRunner._availability_checked = True
+                    return
+        self.available = False
+        GCloudRunner._gcloud_available = False
+        GCloudRunner._availability_checked = True
     
     def run(self, command: str, format: str = "json") -> GCloudResult:
         """Run gcloud command"""
@@ -300,11 +336,14 @@ def sample_firewall_payload() -> Dict[str, Any]:
 def sample_cluster_payload() -> Dict[str, Any]:
     """Sample GKE cluster creation payload"""
     return {
-        "name": f"test-cluster-{datetime.now().strftime('%s')}",
-        "zone": TEST_ZONE,
-        "masterAuth": {"clientCertificateConfig": {}},
-        "nodeCount": 3,
-        "description": "Test GKE cluster"
+        "cluster": {
+            "name": f"test-cluster-{datetime.now().strftime('%s')}",
+            "initialNodeCount": 3,
+            "description": "Test GKE cluster",
+            "nodeConfig": {
+                "machineType": "e2-medium"
+            }
+        }
     }
 
 

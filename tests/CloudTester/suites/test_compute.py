@@ -96,8 +96,9 @@ class TestInstances:
         assert resp.status_code in [200, 201]
         data = resp.json()
         
-        assert data["name"] == payload["name"]
-        assert data["status"] in ["PROVISIONING", "RUNNING"]
+        # API returns an operation, not the instance directly
+        assert "name" in data
+        assert data.get("operationType") in ["insert", "INSERT"] or "targetLink" in data
         
         # Track for cleanup
         cleanup_resources["instances"].append({

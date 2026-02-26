@@ -36,7 +36,7 @@ class TestClusters:
         cleanup_resources["clusters"].append({
             "project": test_project,
             "zone": test_zone,
-            "name": data.get("name", sample_cluster_payload["name"])
+            "name": data.get("name", sample_cluster_payload["cluster"]["name"])
         })
 
 

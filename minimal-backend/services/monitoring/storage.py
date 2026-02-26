@@ -126,11 +126,15 @@ class MonitoringStorage:
 
     def _extract_metric_type(self, filter_str: str) -> Optional[str]:
         """Extract metric.type from filter string."""
+        if not filter_str:
+            return None
         match = re.search(r'metric\.type\s*=\s*"([^"]*)"', filter_str)
         return match.group(1) if match else None
 
     def _extract_resource_type(self, filter_str: str) -> Optional[str]:
         """Extract resource.type from filter string."""
+        if not filter_str:
+            return None
         match = re.search(r'resource\.type\s*=\s*"([^"]*)"', filter_str)
         return match.group(1) if match else None
 

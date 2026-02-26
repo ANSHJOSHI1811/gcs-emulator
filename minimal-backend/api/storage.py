@@ -469,6 +469,149 @@ def list_objects(bucket: str, prefix: Optional[str] = None, db: Session = Depend
     return {"kind": "storage#objects", "items": items}
 
 
+@router.post("/storage/v1/b/{bucket}/o")
+async def upload_object_media(
+    bucket: str,
+    request: Request,
+    uploadType: Optional[str] = Query(None),
+    name: Optional[str] = Query(None),
+    db: Session = Depends(get_db)
+) -> Dict[str, Any]:
+    """
+    Upload object using simple media upload (uploadType=media).
+    This endpoint handles direct binary uploads.
+    """
+    # Validate bucket exists using helper function
+    db_bucket = _get_bucket_or_404(bucket, db)
+    
+    # Get object name from query parameter
+    if not name:
+        raise HTTPException(400, "Object name (name parameter) is required")
+    
+    # SECURITY: Sanitize object name to prevent path traversal
+    object_name = sanitize_object_name(name)
+    
+    # Read binary content from request body
+    content = await request.body()
+    
+    if not content:
+        raise HTTPException(400, "Request body cannot be empty")
+    
+    # Determine generation number FIRST (before writing file)
+    existing_obj = db.query(DBObject).filter(
+        DBObject.bucket_id == bucket,
+        DBObject.name == object_name,
+        DBObject.is_latest == True,
+        DBObject.deleted == False
+    ).with_for_update().first()
+    
+    next_generation = existing_obj.generation + 1 if existing_obj else 1
+    
+    # SECURITY: Validate base file path is within bucket directory
+    base_file_path = validate_object_path(bucket, object_name)
+    
+    # Create versioned file path: bucket/object.txt.v1, bucket/object.txt.v2, etc.
+    file_path_parts = str(base_file_path).rsplit('.', 1)
+    if len(file_path_parts) == 2:
+        versioned_file_path = Path(f"{file_path_parts[0]}.v{next_generation}.{file_path_parts[1]}")
+    else:
+        versioned_file_path = Path(f"{base_file_path}.v{next_generation}")
+    
+    # Create directory if needed
+    os.makedirs(versioned_file_path.parent, exist_ok=True)
+    
+    # SECURITY: Atomic write using temporary file
+    temp_fd, temp_path = tempfile.mkstemp(dir=versioned_file_path.parent, prefix='.tmp_')
+    try:
+        with os.fdopen(temp_fd, 'wb') as f:
+            f.write(content)
+        
+        # Atomically rename temp file to final destination
+        os.replace(temp_path, versioned_file_path)
+    except Exception as e:
+        # Clean up temp file if something went wrong
+        try:
+            os.unlink(temp_path)
+        except:
+            pass
+        raise HTTPException(500, f"Failed to write object: {e}")
+    
+    # Calculate hashes from written file
+    with open(versioned_file_path, "rb") as f:
+        file_content = f.read()
+    
+    md5_hash, crc32c = _calc_hashes(file_content)
+    
+    now = datetime.now(timezone.utc)
+    
+    if existing_obj:
+        # Mark old version as not latest
+        existing_obj.is_latest = False
+        
+        # Create new version (new row)
+        db_obj = DBObject(
+            id=f"{bucket}/{object_name}/generation/{next_generation}",
+            bucket_id=bucket,
+            name=object_name,
+            size=len(file_content),
+            content_type=request.headers.get("content-type", "application/octet-stream"),
+            md5_hash=md5_hash,
+            crc32c_hash=crc32c,
+            file_path=str(versioned_file_path),
+            generation=next_generation,
+            metageneration=1,
+            time_created=now,
+            created_at=now,
+            updated_at=now,
+            is_latest=True,
+            deleted=False
+        )
+        db.add(db_obj)
+        db.commit()
+        db.refresh(db_obj)
+    else:
+        # Create new object (first version)
+        db_obj = DBObject(
+            id=f"{bucket}/{object_name}/generation/{next_generation}",
+            bucket_id=bucket,
+            name=object_name,
+            size=len(file_content),
+            content_type=request.headers.get("content-type", "application/octet-stream"),
+            md5_hash=md5_hash,
+            crc32c_hash=crc32c,
+            file_path=str(versioned_file_path),
+            generation=next_generation,
+            metageneration=1,
+            time_created=now,
+            created_at=now,
+            updated_at=now,
+            is_latest=True,
+            deleted=False
+        )
+        db.add(db_obj)
+        db.commit()
+        db.refresh(db_obj)
+    
+    # Return object metadata
+    return {
+        "kind": "storage#object",
+        "id": f"{bucket}/{object_name}/{db_obj.generation}",
+        "selfLink": f"https://www.googleapis.com/storage/v1/b/{bucket}/o/{object_name}",
+        "name": object_name,
+        "bucket": bucket,
+        "generation": str(db_obj.generation),
+        "metageneration": str(db_obj.metageneration),
+        "contentType": db_obj.content_type,
+        "timeCreated": db_obj.time_created.isoformat().replace("+00:00", "Z"),
+        "updated": db_obj.updated_at.isoformat().replace("+00:00", "Z"),
+        "storageClass": db_bucket.storage_class,
+        "size": str(db_obj.size),
+        "md5Hash": md5_hash,
+        "crc32c": crc32c,
+        "etag": f'"{md5_hash}"',
+    }
+
+
 @router.get("/storage/v1/b/{bucket}/o/{object_name:path}/versions")
 def list_object_versions(
     bucket: str,

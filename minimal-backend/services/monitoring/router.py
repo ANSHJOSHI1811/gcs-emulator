@@ -185,7 +185,7 @@ async def write_time_series(project: str, request: Dict[str, Any]) -> Dict[str, 
 @router.get("/projects/{project}/timeSeries")
 async def list_time_series(
     project: str,
-    filter: str = Query(...),
+    filter: Optional[str] = Query(None),
     interval_start_time: Optional[str] = Query(None),
     interval_end_time: Optional[str] = Query(None),
     aggregate_by: Optional[List[str]] = Query(None),
@@ -213,9 +213,11 @@ async def list_time_series(
             start_time = end_time - timedelta(hours=1)
 
         # Retrieve matching time series
+        # If no filter provided, return all time series
+        filter_to_use = filter if filter else ""
         time_series_list = storage.list_time_series(
             project=project,
-            filter_str=filter,
+            filter_str=filter_to_use,
             start_time=start_time,
             end_time=end_time,
         )
