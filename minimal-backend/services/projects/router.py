@@ -25,6 +25,21 @@ def list_projects(db: Session = Depends(get_db)):
         } for p in projects]
     }
 
+@router.get("/projects/{project_id}")
+def get_project(project_id: str, db: Session = Depends(get_db)):
+    """Get a specific project"""
+    project = db.query(Project).filter_by(id=project_id).first()
+    if not project:
+        raise HTTPException(status_code=404, detail=f"Project {project_id} not found")
+    
+    return {
+        "projectId": project.id,
+        "name": project.name,
+        "projectNumber": str(project.project_number) if project.project_number else "0",
+        "lifecycleState": "ACTIVE",
+        "createTime": project.created_at.isoformat() + "Z" if project.created_at else None
+    }
+
 @router.post("/projects")
 def create_project(project_data: ProjectCreate, db: Session = Depends(get_db)):
     """Create a new project"""

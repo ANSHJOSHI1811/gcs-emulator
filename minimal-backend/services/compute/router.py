@@ -38,10 +38,13 @@ router = APIRouter()
 def _op(project: str, zone: str, op_type: str, target: str, extra: dict = None) -> dict:
     """Build a DONE compute#operation response."""
     oid = str(random.randint(10 ** 12, 10 ** 13 - 1))
+    # Extract resource name from target link for easier testing
+    resource_name = target.split("/")[-1] if "/" in target else target
     base = {
         "kind": "compute#operation",
         "id": oid,
-        "name": oid,
+        "name": resource_name,  # Use resource name instead of operation ID
+        "operationId": oid,
         "zone": f"https://www.googleapis.com/compute/v1/projects/{project}/zones/{zone}",
         "operationType": op_type,
         "targetLink": target,
@@ -374,6 +377,7 @@ async def create_instance(project: str, zone: str, body: dict, db: Session = Dep
     return _op(project, zone, "insert",
                f"https://www.googleapis.com/compute/v1/projects/{project}/zones/{zone}/instances/{name}",
                {"targetId": str(instance.id),
+                "targetName": name,
                 "insertTime": instance.created_at.isoformat() + "Z",
                 "startTime": instance.created_at.isoformat() + "Z",
                 "endTime": instance.created_at.isoformat() + "Z"})
@@ -597,6 +601,20 @@ def get_disk(project: str, zone: str, disk_name: str, db: Session = Depends(get_
         raise HTTPException(404, "Disk not found")
     return _disk_resource(d, project)
 
+# ────────────────────────────────────────────────────────
+# Images
+# ────────────────────────────────────────────────────────
+
+@router.get("/projects/{project}/global/images")
+def list_images(project: str, db: Session = Depends(get_db)):
+    """List VM images (returns empty list for simulator)"""
+    # In a real simulator, we'd have a images table
+    # For now, return empty list as images are typically from public sources
+    return {
+        "kind": "compute#imageList",
+        "items": [],
+        "selfLink": f"https://www.googleapis.com/compute/v1/projects/{project}/global/images"
+    }
 
 @router.post("/projects/{project}/zones/{zone}/disks")
 async def create_disk(project: str, zone: str,

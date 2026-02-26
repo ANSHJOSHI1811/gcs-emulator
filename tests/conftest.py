@@ -73,6 +73,9 @@ class APIClient:
     def post(self, path: str, data: Dict = None, **kwargs) -> requests.Response:
         """POST request"""
         url = self._build_url(path)
+        # Handle binary data vs JSON data
+        if isinstance(data, bytes):
+            return self.session.post(url, data=data, timeout=TEST_TIMEOUT, **kwargs)
         return self.session.post(url, json=data, timeout=TEST_TIMEOUT, **kwargs)
     
     def patch(self, path: str, data: Dict = None, **kwargs) -> requests.Response:

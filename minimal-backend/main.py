@@ -57,6 +57,7 @@ app.include_router(gke_router, prefix="/container/v1", tags=["GKE"])
 app.include_router(gke_router, prefix="/v1", tags=["GKE (gcloud CLI)"])
 
 # Cloud Run — gcloud compatibility (run.googleapis.com/v2)
+app.include_router(run_router, prefix="/v1", tags=["Cloud Run v1"])
 app.include_router(run_router, prefix="/v2", tags=["Cloud Run"])
 app.include_router(run_router, prefix="/run/v2", tags=["Cloud Run (alt)"])
 

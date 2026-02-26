@@ -37,9 +37,13 @@ except Exception:
 
 def _op(project: str, op_type: str, target: str, scope: str = "global") -> dict:
     oid = str(random.randint(10 ** 12, 10 ** 13 - 1))
+    # Extract resource name from target link
+    resource_name = target.split("/")[-1] if "/" in target else target
     return {
         "kind": "compute#operation",
-        "id": oid, "name": oid,
+        "id": oid,
+        "name": resource_name,  # Use resource name instead of operation ID for easier testing
+        "operationId": oid,
         "operationType": op_type,
         "targetLink": target,
         "status": "DONE",
