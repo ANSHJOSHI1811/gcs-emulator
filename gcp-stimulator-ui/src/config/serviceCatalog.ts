@@ -1,4 +1,4 @@
-import { LucideIcon, HardDrive, Cpu, Network, Shield, MessageSquare, Activity, Globe, Lock, Route, Box, Server, Layers, Cloud, PackageSearch } from 'lucide-react';
+import { LucideIcon, HardDrive, Cpu, Network, Shield, MessageSquare, Activity, Globe, Lock, Route, Box, Server, Layers, Cloud, PackageSearch, Key, Gauge } from 'lucide-react';
 
 export interface ServiceLink {
   label: string;
@@ -150,7 +150,30 @@ export const serviceCategories: ServiceCategory[] = [
         description: 'Messaging and ingestion for event-driven systems',
         icon: MessageSquare,
         category: 'Messaging',
-        enabled: false,
+        enabled: true,
+        sidebarLinks: [
+          { label: 'Dashboard', path: '/services/pubsub', icon: MessageSquare },
+          { label: 'Topics', path: '/services/pubsub', icon: MessageSquare },
+          { label: 'Subscriptions', path: '/services/pubsub', icon: MessageSquare },
+        ],
+      },
+    ],
+  },
+  {
+    id: 'security',
+    name: 'Security',
+    services: [
+      {
+        id: 'secretmanager',
+        name: 'Secret Manager',
+        description: 'Store and manage secrets securely',
+        icon: Key,
+        category: 'Security',
+        enabled: true,
+        sidebarLinks: [
+          { label: 'Dashboard', path: '/services/secretmanager', icon: Key },
+          { label: 'Secrets', path: '/services/secretmanager', icon: Key },
+        ],
       },
     ],
   },
@@ -167,8 +190,20 @@ export const serviceCategories: ServiceCategory[] = [
         enabled: true,
         sidebarLinks: [
           { label: 'Dashboard', path: '/services/monitoring', icon: Activity },
-          { label: 'Metrics', path: '/services/monitoring/metrics', icon: Activity },
-          { label: 'Alerts', path: '/services/monitoring/alerts', icon: Activity },
+          { label: 'Metrics', path: '/services/monitoring', icon: Activity },
+          { label: 'Alerts', path: '/services/monitoring', icon: Activity },
+        ],
+      },
+      {
+        id: 'autoscaling',
+        name: 'Autoscaling',
+        description: 'Automatic scaling policies for compute resources',
+        icon: Gauge,
+        category: 'Monitoring',
+        enabled: true,
+        sidebarLinks: [
+          { label: 'Dashboard', path: '/services/autoscaling', icon: Gauge },
+          { label: 'Policies', path: '/services/autoscaling', icon: Gauge },
         ],
       },
     ],
