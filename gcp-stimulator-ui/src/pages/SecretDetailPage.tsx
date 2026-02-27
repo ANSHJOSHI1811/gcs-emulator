@@ -4,11 +4,11 @@ import { useProject } from '../contexts/ProjectContext';
 import {
   getSecret,
   listVersions,
-  addVersion,
-  accessVersion,
-  enableVersion,
-  disableVersion,
-  destroyVersion,
+  addSecretVersion,
+  accessSecretVersion,
+  enableSecretVersion,
+  disableSecretVersion,
+  destroySecretVersion,
   generatePassword,
   Secret,
   SecretVersion,
@@ -63,7 +63,8 @@ export default function SecretDetailPage() {
 
     try {
       setLoading(true);
-      const data = await getSecret(currentProject, secretId);
+      const secretName = `projects/${currentProject}/secrets/${secretId}`;
+      const data = await getSecret(secretName);
       setSecret(data);
       setError(null);
     } catch (err: unknown) {
@@ -80,7 +81,8 @@ export default function SecretDetailPage() {
 
     try {
       setVersionsLoading(true);
-      const data = await listVersions(currentProject, secretId);
+      const secretName = `projects/${currentProject}/secrets/${secretId}`;
+      const data = await listVersions(secretName);
       setVersions(data);
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : 'Failed to load versions';
@@ -103,7 +105,8 @@ export default function SecretDetailPage() {
 
     setAddingVersion(true);
     try {
-      await addVersion(currentProject, secretId, newVersionData);
+      const secretName = `projects/${currentProject}/secrets/${secretId}`;
+      await addSecretVersion(secretName, newVersionData);
       toast.success('Version added successfully');
       setShowAddVersionModal(false);
       setNewVersionData('');
@@ -123,7 +126,8 @@ export default function SecretDetailPage() {
     setShowSecretValue(false);
 
     try {
-      const data = await accessVersion(currentProject, secretId, version);
+      const versionName = `projects/${currentProject}/secrets/${secretId}/versions/${version}`;
+      const data = await accessSecretVersion(versionName);
       setSecretData(data.payload.data);
     } catch (err: unknown) {
       toast.error(err instanceof Error ? err.message : 'Failed to access secret');
@@ -138,7 +142,8 @@ export default function SecretDetailPage() {
 
     setActioningVersion(version);
     try {
-      await enableVersion(currentProject, secretId, version);
+      const versionName = `projects/${currentProject}/secrets/${secretId}/versions/${version}`;
+      await enableSecretVersion(versionName);
       toast.success('Version enabled');
       await fetchVersions();
     } catch (err: unknown) {
@@ -153,7 +158,8 @@ export default function SecretDetailPage() {
 
     setActioningVersion(version);
     try {
-      await disableVersion(currentProject, secretId, version);
+      const versionName = `projects/${currentProject}/secrets/${secretId}/versions/${version}`;
+      await disableSecretVersion(versionName);
       toast.success('Version disabled');
       await fetchVersions();
     } catch (err: unknown) {
@@ -172,7 +178,8 @@ export default function SecretDetailPage() {
 
     setActioningVersion(version);
     try {
-      await destroyVersion(currentProject, secretId, version);
+      const versionName = `projects/${currentProject}/secrets/${secretId}/versions/${version}`;
+      await destroySecretVersion(versionName);
       toast.success('Version destroyed');
       await fetchVersions();
     } catch (err: unknown) {
@@ -184,7 +191,14 @@ export default function SecretDetailPage() {
 
   async function handleGeneratePassword() {
     try {
-      const password = await generatePassword(16, true, true, true, true, true);
+      const password = await generatePassword({
+        length: 16,
+        includeUppercase: true,
+        includeLowercase: true,
+        includeDigits: true,
+        includeSymbols: true,
+        excludeAmbiguous: true,
+      });
       setGeneratedPassword(password);
       setShowGeneratePasswordModal(true);
     } catch (err: unknown) {

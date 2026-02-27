@@ -32,7 +32,7 @@ import {
 
 type ActiveTab = 'metrics' | 'alerts' | 'channels';
 
-export default function MonitoringDashboard() {
+function MonitoringDashboard() {
   const { currentProject } = useProject();
 
   const [activeTab, setActiveTab] = useState<ActiveTab>('metrics');
@@ -855,69 +855,5 @@ export default function MonitoringDashboard() {
     </div>
   );
 }
- 
-                            {alert.notificationChannels?.length || 0} channel(s)
-                          </div>
-                        </div>
-                        <span
-                          className={`px-3 py-1 rounded-full text-xs font-semibold ${getAlertState(
-                            alert.state || 'OK'
-                          )}`}
-                        >
-                          {alert.state || 'OK'}
-                        </span>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </section>
-
-            {/* Auto-Scaling Section */}
-            <section>
-              <h2 className="text-xl font-bold text-white mb-4 flex items-center gap-2">
-                <Settings size={20} className="text-green-400" />
-                Auto-Scaling Policies ({autoscalers.length})
-              </h2>
-              {autoscalers.length === 0 ? (
-                <div className="p-6 bg-slate-800/50 border border-slate-700 rounded-lg text-gray-400 text-center">
-                  No autoscaling policies configured
-                </div>
-              ) : (
-                <div className="space-y-3">
-                  {autoscalers.map((autoscaler, idx) => (
-                    <div
-                      key={idx}
-                      className="p-4 bg-slate-800/50 border border-slate-700 rounded-lg hover:border-cyan-500 transition"
-                    >
-                      <div className="flex items-start justify-between">
-                        <div className="flex-1">
-                          <div className="font-semibold text-white">{autoscaler.name?.split('/').pop()}</div>
-                          <div className="text-sm text-gray-400 mt-2 space-y-1">
-                            <div>Target: {autoscaler.target?.split('/').pop()}</div>
-                            <div>
-                              Size: {autoscaler.currentSize} / {autoscaler.minReplicas}-{autoscaler.maxReplicas}
-                            </div>
-                            <div>Last Action: {autoscaler.lastAction || 'None'}</div>
-                          </div>
-                        </div>
-                        <div className="text-right">
-                          {getScalingStatus(autoscaler)}
-                          <div className="text-xs text-gray-500 mt-2">
-                            {autoscaler.enabled ? 'Enabled' : 'Disabled'}
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </section>
-          </>
-        )}
-      </div>
-    </div>
-  );
-};
 
 export default MonitoringDashboard;
