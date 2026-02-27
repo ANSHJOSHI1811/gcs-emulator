@@ -3,9 +3,13 @@ import { getServiceById, ServiceLink } from '../../config/serviceCatalog';
 
 const DynamicSidebar = () => {
   const location = useLocation();
-  const params = useParams<{ serviceName: string }>();
-  
-  const serviceName = params.serviceName;
+  const params = useParams<{ serviceName?: string }>();
+
+  // Some routes are declared as static paths (e.g. /services/secretmanager)
+  // so `useParams()` may be empty. Derive the service id from the path
+  // as a fallback to ensure the sidebar shows correctly.
+  const fallbackServiceName = location.pathname.split('/')[2];
+  const serviceName = params.serviceName || fallbackServiceName;
   const service = serviceName ? getServiceById(serviceName) : null;
 
   const isActive = (path: string) => {
@@ -60,7 +64,7 @@ const DynamicSidebar = () => {
             <div className="w-2 h-2 bg-green-500 rounded-full"></div>
             <span>Server Running</span>
           </div>
-          <div className="mt-1">Port: 8080</div>
+          <div className="mt-1">Backend: /api</div>
         </div>
       </div>
     </aside>
