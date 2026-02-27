@@ -48,7 +48,7 @@ apiClient.interceptors.request.use(
     if (typeof config.url === 'string' && config.url.startsWith('/')) {
       config.url = config.url.slice(1);
     }
-    // console.log(`[${config.method?.toUpperCase()}] ${config.url}`);
+    console.log(`[${config.method?.toUpperCase()}] ${API_BASE_URL}/${config.url} (baseURL: ${config.baseURL})`);
     return config;
   },
   (error) => {
