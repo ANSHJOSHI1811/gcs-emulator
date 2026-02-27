@@ -28,6 +28,8 @@ import FirewallsPage from './pages/FirewallsPage';
 import RoutesPage from './pages/RoutesPage';
 import MonitoringDashboard from './pages/MonitoringDashboard';
 import PubSubDashboardPage from './pages/PubSubDashboardPage';
+import SecretManagerDashboardPage from './pages/SecretManagerDashboardPage';
+import SecretDetailPage from './pages/SecretDetailPage';
 
 function App() {
   return (
@@ -99,6 +101,12 @@ function App() {
             {/* Pub/Sub Service Routes */}
             <Route path="/services/pubsub">
               <Route index element={<PubSubDashboardPage />} />
+            </Route>
+
+            {/* Secret Manager Service Routes */}
+            <Route path="/services/secretmanager">
+              <Route index element={<SecretManagerDashboardPage />} />
+              <Route path="secrets/:secretId" element={<SecretDetailPage />} />
             </Route>
             
             {/* Legacy VPC route redirect */}
