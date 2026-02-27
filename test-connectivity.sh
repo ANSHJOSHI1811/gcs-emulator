@@ -4,8 +4,8 @@ set -e
 echo "=== GCS Stimulator Connectivity Test ==="
 echo
 
-echo "1. Testing Backend (Port 8000)..."
-BACKEND_STATUS=$(curl -s -w "%{http_code}" -o /dev/null http://localhost:8000/health)
+echo "1. Testing Backend (Port 8080)..."
+BACKEND_STATUS=$(curl -s -w "%{http_code}" -o /dev/null http://localhost:8080/health)
 if [ "$BACKEND_STATUS" = "200" ]; then
     echo "   ✅ Backend is healthy"
 else
@@ -53,7 +53,7 @@ echo
 echo "5. Network Information..."
 echo "   Internal IP: $(hostname -I | awk '{print $1}')"
 echo "   Listening ports:"
-ss -tlnp 2>/dev/null | grep -E ':(3000|8000)' || netstat -tlnp 2>/dev/null | grep -E ':(3000|8000)' || echo "   (Unable to check ports)"
+ss -tlnp 2>/dev/null | grep -E ':(3000|8080)' || netstat -tlnp 2>/dev/null | grep -E ':(3000|8080)' || echo "   (Unable to check ports)"
 
 echo
 
@@ -63,16 +63,16 @@ echo
 echo "📝 How to Access:"
 echo "   1. FROM THIS MACHINE:"
 echo "      - Frontend: http://localhost:3000"
-echo "      - Backend:  http://localhost:8000"
+echo "      - Backend:  http://localhost:8080"
 echo
 
 echo "   2. FROM YOUR LOCAL MACHINE (SSH Tunnel):"
 echo "      Run this command on YOUR local machine:"
-echo "      ssh -L 3000:localhost:3000 -L 8000:localhost:8000 ubuntu@<SERVER_IP>"
+echo "      ssh -L 3000:localhost:3000 -L 8080:localhost:8080 ubuntu@<SERVER_IP>"
 echo "      Then access: http://localhost:3000"
 echo
 
 echo "   3. FROM YOUR LOCAL MACHINE (Port Forward - if in Kubernetes):"
-echo "      kubectl port-forward <POD_NAME> 3000:3000 8000:8000"
+echo "      kubectl port-forward <POD_NAME> 3000:3000 8080:8080"
 echo "      Then access: http://localhost:3000"
 echo
