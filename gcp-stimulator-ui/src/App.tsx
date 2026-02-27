@@ -30,6 +30,7 @@ import MonitoringDashboard from './pages/MonitoringDashboard';
 import PubSubDashboardPage from './pages/PubSubDashboardPage';
 import SecretManagerDashboardPage from './pages/SecretManagerDashboardPage';
 import SecretDetailPage from './pages/SecretDetailPage';
+import AutoscalingDashboardPage from './pages/AutoscalingDashboardPage';
 
 function App() {
   return (
@@ -107,6 +108,11 @@ function App() {
             <Route path="/services/secretmanager">
               <Route index element={<SecretManagerDashboardPage />} />
               <Route path="secrets/:secretId" element={<SecretDetailPage />} />
+            </Route>
+
+            {/* Autoscaling Service Routes */}
+            <Route path="/services/autoscaling">
+              <Route index element={<AutoscalingDashboardPage />} />
             </Route>
             
             {/* Legacy VPC route redirect */}
