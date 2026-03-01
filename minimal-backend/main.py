@@ -3,6 +3,7 @@ import asyncio
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from services.compute.router import router as compute_router
+from services.compute.instance_groups import router as instance_groups_router
 from services.vpc.router import router as vpc_router
 from services.iam.router import router as iam_router
 from services.gke.router import router as gke_router
@@ -45,6 +46,7 @@ def health():
 
 # Register routers with GCP API paths
 app.include_router(compute_router, prefix="/compute/v1", tags=["Compute Engine"])
+app.include_router(instance_groups_router, prefix="/compute/v1", tags=["Instance Groups"])
 app.include_router(vpc_router, prefix="/compute/v1", tags=["VPC Networks"])
 app.include_router(projects_router, prefix="/cloudresourcemanager/v1", tags=["Projects"])
 app.include_router(iam_router, prefix="/v1", tags=["IAM & Admin"])

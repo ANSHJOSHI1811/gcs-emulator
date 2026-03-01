@@ -386,6 +386,37 @@ class Disk(Base):
     created_at   = Column(DateTime, default=datetime.utcnow)
 
 
+class InstanceGroup(Base):
+    """Managed Instance Group (collection of instances in a zone)"""
+    __tablename__ = "instance_groups"
+
+    id              = Column(Integer, primary_key=True, autoincrement=True)
+    name            = Column(String, nullable=False)
+    project_id      = Column(String, nullable=False)
+    zone            = Column(String, nullable=False)
+    description     = Column(String)
+    named_ports     = Column(JSON, default=list)  # [{name: "http", port: 80}, ...]
+    status          = Column(String, default="AVAILABLE")  # AVAILABLE | CREATING | DELETING
+    network         = Column(String, default="default")
+    subnetwork      = Column(String)
+    labels          = Column(JSON, default=dict)
+    created_at      = Column(DateTime, default=datetime.utcnow)
+    updated_at      = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
+class InstanceGroupMember(Base):
+    """Instance membership in an Instance Group"""
+    __tablename__ = "instance_group_members"
+
+    id                  = Column(Integer, primary_key=True, autoincrement=True)
+    instance_group_id   = Column(Integer, nullable=False)  # FK to InstanceGroup
+    instance_name       = Column(String, nullable=False)  # Instance name
+    project_id          = Column(String, nullable=False)
+    zone                = Column(String, nullable=False)
+    status              = Column(String, default="RUNNING")  # RUNNING | STOPPED | TERMINATED
+    added_at            = Column(DateTime, default=datetime.utcnow)
+
+
 # ──────────────────────────────────────────────
 # Sprint 2 — VPC new resources
 # ──────────────────────────────────────────────

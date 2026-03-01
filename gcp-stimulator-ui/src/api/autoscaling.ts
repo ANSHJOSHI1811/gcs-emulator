@@ -199,6 +199,46 @@ export async function listAutoscalerStatuses(
 }
 
 /**
+ * List instances in a zone (for autoscaler target selection)
+ */
+export async function listInstances(
+  zone: string,
+  project?: string
+): Promise<{ name: string; status: string }[]> {
+  const proj = project || getCurrentProject();
+  try {
+    const response = await apiClient.get<{
+      items?: Array<{ name: string; status: string }>;
+    }>(
+      `/compute/v1/projects/${proj}/zones/${zone}/instances`
+    );
+    return response.data.items ?? [];
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * List instance groups in a zone (for autoscaler target selection)
+ */
+export async function listInstanceGroups(
+  zone: string,
+  project?: string
+): Promise<{ name: string; size: number }[]> {
+  const proj = project || getCurrentProject();
+  try {
+    const response = await apiClient.get<{
+      items?: Array<{ name: string; size: number }>;
+    }>(
+      `/compute/v1/projects/${proj}/zones/${zone}/instanceGroups`
+    );
+    return response.data.items ?? [];
+  } catch {
+    return [];
+  }
+}
+
+/**
  * Get scaling action history for an autoscaler
  */
 export async function getScalingHistory(

@@ -6,6 +6,8 @@ import {
   updateAutoscaler,
   deleteAutoscaler,
   getScalingHistory,
+  listInstances,
+  listInstanceGroups,
   AutoscalingPolicy,
   ScalingRule,
   ScalingAction,
@@ -53,6 +55,11 @@ export default function AutoscalingDashboardPage() {
   const [showEditModal, setShowEditModal] = useState(false);
   const [showHistoryModal, setShowHistoryModal] = useState(false);
 
+  // Instances list for target selection
+  const [availableInstances, setAvailableInstances] = useState<{ name: string; status: string }[]>([]);
+  const [availableGroups, setAvailableGroups] = useState<{ name: string; size: number }[]>([]);
+  const [loadingInstances, setLoadingInstances] = useState(false);
+
   // Form states
   const [formData, setFormData] = useState({
     name: '',
@@ -95,9 +102,36 @@ export default function AutoscalingDashboardPage() {
     }
   }, [currentProject, selectedZone]);
 
+  const fetchAvailableInstances = useCallback(async () => {
+    if (!currentProject || !selectedZone) return;
+
+    try {
+      setLoadingInstances(true);
+      const [instances, groups] = await Promise.all([
+        listInstances(selectedZone, currentProject),
+        listInstanceGroups(selectedZone, currentProject),
+      ]);
+      setAvailableInstances(instances);
+      setAvailableGroups(groups);
+    } catch (err: unknown) {
+      console.error('Failed to fetch instances/groups:', err);
+      setAvailableInstances([]);
+      setAvailableGroups([]);
+    } finally {
+      setLoadingInstances(false);
+    }
+  }, [currentProject, selectedZone]);
+
   useEffect(() => {
     fetchPolicies();
   }, [fetchPolicies]);
+
+  // Fetch instances when modal opens or zone changes
+  useEffect(() => {
+    if (showCreateModal || showEditModal) {
+      fetchAvailableInstances();
+    }
+  }, [showCreateModal, showEditModal, fetchAvailableInstances]);
 
   function getPolicyId(policyName: string): string {
     const parts = policyName.split('/');
@@ -566,14 +600,47 @@ export default function AutoscalingDashboardPage() {
                   />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700">Target *</label>
-                  <input
-                    type="text"
-                    value={formData.target}
-                    onChange={(e) => setFormData({ ...formData, target: e.target.value })}
-                    placeholder="instance-group-name"
-                    className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
-                  />
+                  <label className="block text-sm font-medium text-gray-700">Target Instance/Group *</label>
+                  {availableInstances.length > 0 || availableGroups.length > 0 ? (
+                    <select
+                      value={formData.target}
+                      onChange={(e) => setFormData({ ...formData, target: e.target.value })}
+                      className="mt-1 w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                    >
+                      <option value="">-- Select an instance or group --</option>
+                      {availableGroups.length > 0 && (
+                        <optgroup label="Instance Groups">
+                          {availableGroups.map((group) => (
+                            <option key={`group-${group.name}`} value={group.name}>
+                              📦 {group.name} ({group.size} instances)
+                            </option>
+                          ))}
+                        </optgroup>
+                      )}
+                      {availableInstances.length > 0 && (
+                        <optgroup label="Individual Instances">
+                          {availableInstances.map((inst) => (
+                            <option key={`instance-${inst.name}`} value={inst.name}>
+                              💻 {inst.name} ({inst.status})
+                            </option>
+                          ))}
+                        </optgroup>
+                      )}
+                    </select>
+                  ) : (
+                    <div className="mt-1 space-y-2">
+                      <input
+                        type="text"
+                        value={formData.target}
+                        onChange={(e) => setFormData({ ...formData, target: e.target.value })}
+                        placeholder="instance-group-name or instance-name"
+                        className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                      />
+                      <p className="text-xs text-gray-500">
+                        No instances or groups found. Create instances or instance groups in Compute Engine first.
+                      </p>
+                    </div>
+                  )}
                 </div>
               </div>
 

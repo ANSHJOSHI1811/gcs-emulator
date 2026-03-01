@@ -15,6 +15,7 @@ import SettingsPage from './pages/SettingsPage';
 import IAMDashboardPage from './pages/IAMDashboardPage';
 import ComputeDashboardPage from './pages/ComputeDashboardPage';
 import CreateInstancePage from './pages/CreateInstancePage';
+import InstanceGroupsPage from './pages/InstanceGroupsPage';
 import GKEDashboardPage from './pages/GKEDashboardPage';
 import CreateClusterPage from './pages/CreateClusterPage';
 import GKEClusterDetailPage from './pages/GKEClusterDetailPage';
@@ -64,6 +65,7 @@ function App() {
               <Route index element={<ComputeDashboardPage />} />
               <Route path="instances" element={<ComputeDashboardPage />} />
               <Route path="instances/create" element={<CreateInstancePage />} />
+              <Route path="instance-groups" element={<InstanceGroupsPage />} />
             </Route>
 
             {/* GKE Service Routes */}
