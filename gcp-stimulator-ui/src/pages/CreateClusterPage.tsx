@@ -171,7 +171,7 @@ export default function CreateClusterPage() {
                 className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
               >
                 {zones.length === 0 ? (
-                  <option value={form.location}>{form.location}</option>
+                  <option key="fallback" value={form.location}>{form.location}</option>
                 ) : (
                   zones.map((z) => <option key={z.name} value={z.name}>{z.name}</option>)
                 )}
@@ -282,7 +282,7 @@ export default function CreateClusterPage() {
                 className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
               >
                 {networks.length === 0 ? (
-                  <option value="default">default</option>
+                  <option key="fallback" value="default">default</option>
                 ) : (
                   networks.map((n) => <option key={n.name} value={n.name}>{n.name}</option>)
                 )}

@@ -59,6 +59,14 @@ async def create_metric_descriptor(project: str, request: Dict[str, Any]) -> Dic
         metric_kind_str = request.get("metricKind", "GAUGE")
         value_type_str = request.get("valueType", "DOUBLE")
 
+        # Check if metric already exists
+        existing = storage.get_metric_descriptor(project, metric_type)
+        if existing:
+            raise HTTPException(
+                status_code=409,
+                detail=f"Metric descriptor with type '{metric_type}' already exists"
+            )
+
         # Create descriptor
         descriptor = MetricDescriptor(
             name=f"projects/{project}/metricDescriptors/{metric_type}",
@@ -78,6 +86,8 @@ async def create_metric_descriptor(project: str, request: Dict[str, Any]) -> Dic
         print(f"[Monitoring] Created metric descriptor: {metric_type}")
         return descriptor.to_dict()
 
+    except HTTPException:
+        raise
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:

@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useProject } from '../contexts/ProjectContext';
 import {
   listMetricDescriptors,
@@ -34,6 +35,7 @@ type ActiveTab = 'metrics' | 'alerts' | 'channels';
 
 function MonitoringDashboard() {
   const { currentProject } = useProject();
+  const navigate = useNavigate();
 
   const [activeTab, setActiveTab] = useState<ActiveTab>('metrics');
   const [loading, setLoading] = useState(true);
@@ -299,7 +301,7 @@ function MonitoringDashboard() {
             </button>
             {activeTab === 'metrics' && (
               <button
-                onClick={() => setShowCreateMetricModal(true)}
+                onClick={() => navigate('/services/monitoring/create-metric')}
                 className="inline-flex items-center gap-2 rounded-md bg-blue-600 px-4 py-1.5 text-sm font-medium text-white hover:bg-blue-700"
               >
                 <Plus className="h-4 w-4" />

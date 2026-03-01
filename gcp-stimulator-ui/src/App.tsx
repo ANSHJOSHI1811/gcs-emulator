@@ -28,6 +28,7 @@ import SubnetsPage from './pages/SubnetsPage';
 import FirewallsPage from './pages/FirewallsPage';
 import RoutesPage from './pages/RoutesPage';
 import MonitoringDashboard from './pages/MonitoringDashboard';
+import CreateMetricPage from './pages/CreateMetricPage';
 import PubSubDashboardPage from './pages/PubSubDashboardPage';
 import SecretManagerDashboardPage from './pages/SecretManagerDashboardPage';
 import SecretDetailPage from './pages/SecretDetailPage';
@@ -99,6 +100,7 @@ function App() {
             {/* Cloud Monitoring Service Routes */}
             <Route path="/services/monitoring">
               <Route index element={<MonitoringDashboard />} />
+              <Route path="create-metric" element={<CreateMetricPage />} />
             </Route>
 
             {/* Pub/Sub Service Routes */}
