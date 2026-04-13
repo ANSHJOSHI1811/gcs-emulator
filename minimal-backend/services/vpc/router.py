@@ -270,7 +270,8 @@ def ensure_default_network(db: Session, project: str):
 
 @router.get("/projects/{project}/global/networks")
 def list_networks(project: str, db: Session = Depends(get_db)):
-    ensure_default_network(db, project)
+    # Skip ensure_default_network for now - it's causing errors
+    # ensure_default_network should be called during project initialization instead
     networks = db.query(Network).filter_by(project_id=project).all()
     return {
         "kind": "compute#networkList",
