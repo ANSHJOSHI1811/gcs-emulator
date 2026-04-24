@@ -33,7 +33,7 @@ A comprehensive **Google Cloud Platform (GCP) emulator** that simulates GCP serv
 
 ```
 gcs-emulator/
-├── minimal-backend/              # FastAPI Backend
+├── backend/              # FastAPI Backend
 │   ├── main.py                   # App entry, routes setup
 │   ├── database.py               # SQLAlchemy models + DB setup
 │   ├── docker_manager.py         # Docker container lifecycle
@@ -61,7 +61,7 @@ gcs-emulator/
 │   │   └── database.py          # DB connection helpers
 │   └── requirements.txt
 │
-├── gcp-stimulator-ui/            # React Frontend (Vite)
+├── frontend/            # React Frontend (Vite)
 │   ├── src/
 │   │   ├── pages/               # Page components (Storage, Compute, VPC, IAM, etc.)
 │   │   ├── components/          # Reusable UI components
@@ -155,7 +155,7 @@ Browser → Vite dev server / Nginx (prod)
 
 ### Backend Setup & Run
 ```bash
-cd minimal-backend
+cd backend
 
 # Install dependencies
 pip install -r requirements.txt
@@ -169,7 +169,7 @@ gunicorn -w 4 -k uvicorn.workers.UvicornWorker main:app
 
 ### Frontend Setup & Run
 ```bash
-cd gcp-stimulator-ui
+cd frontend
 
 # Install dependencies
 npm install
@@ -198,7 +198,7 @@ bash run_full_suite.sh
 cd CloudTester && python -m pytest suites/storage/ -v
 
 # Run with coverage
-pytest --cov=../minimal-backend --cov-report=html
+pytest --cov=../backend --cov-report=html
 ```
 
 ### Utilities
@@ -215,12 +215,12 @@ python generate_context.py
 ### Local Development
 1. **Terminal 1 - Backend**:
    ```bash
-   cd minimal-backend && uvicorn main:app --reload --host 0.0.0.0 --port 8080
+   cd backend && uvicorn main:app --reload --host 0.0.0.0 --port 8080
    ```
 
 2. **Terminal 2 - Frontend**:
    ```bash
-   cd gcp-stimulator-ui && npm run dev
+   cd frontend && npm run dev
    ```
 
 3. **Access**:
@@ -229,28 +229,28 @@ python generate_context.py
    - API Docs: http://localhost:8080/docs (Swagger)
 
 ### Adding a New GCP Service
-1. Create SQLAlchemy models in `minimal-backend/database.py`
-2. Create service logic in `minimal-backend/services/{service_name}/`
-3. Create API routes in `minimal-backend/api/{service_name}.py`
-4. Register route in `minimal-backend/main.py`
-5. Create React page in `gcp-stimulator-ui/src/pages/`
-6. Create API client in `gcp-stimulator-ui/src/api/{service_name}.ts`
-7. Add routes to React Router in `gcp-stimulator-ui/src/App.tsx`
+1. Create SQLAlchemy models in `backend/database.py`
+2. Create service logic in `backend/services/{service_name}/`
+3. Create API routes in `backend/api/{service_name}.py`
+4. Register route in `backend/main.py`
+5. Create React page in `frontend/src/pages/`
+6. Create API client in `frontend/src/api/{service_name}.ts`
+7. Add routes to React Router in `frontend/src/App.tsx`
 
 ### Docker Integration
-- **Backend**: Can be containerized with Dockerfile in `gcp-stimulator-ui/` (nginx proxy)
+- **Backend**: Can be containerized with Dockerfile in `frontend/` (nginx proxy)
 - **Frontend**: Served via Nginx in production
 - **Database**: Expects PostgreSQL RDS connection via `DATABASE_URL` env var
 
 ## Environment Variables
 
-### Backend (minimal-backend)
+### Backend (backend)
 ```ini
 DATABASE_URL=postgresql://user:pass@host:5432/db_name
 DOCKER_HOST=unix:///var/run/docker.sock  # or tcp://docker:2375
 ```
 
-### Frontend (gcp-stimulator-ui)
+### Frontend (frontend)
 ```ini
 VITE_API_BASE_URL=http://localhost:8080  # Backend API URL
 ```

@@ -77,7 +77,7 @@ class ContextManager:
     
     def get_backend_status(self) -> Dict[str, any]:
         """Check backend service status."""
-        backend_dir = self.project_root / "minimal-backend"
+        backend_dir = self.project_root / "backend"
         
         # Check main.py
         main_py = backend_dir / "main.py"
@@ -101,7 +101,7 @@ class ContextManager:
     
     def get_frontend_status(self) -> Dict[str, any]:
         """Check frontend status."""
-        frontend_dir = self.project_root / "gcp-stimulator-ui"
+        frontend_dir = self.project_root / "frontend"
         
         components = len(list((frontend_dir / "src/components").glob("**/*.tsx")))
         pages = len(list((frontend_dir / "src/pages").glob("*.tsx")))
@@ -127,7 +127,7 @@ class ContextManager:
     def _count_models(self) -> int:
         """Count database models."""
         try:
-            db_file = self.project_root / "minimal-backend/core/database.py"
+            db_file = self.project_root / "backend/core/database.py"
             with open(db_file) as f:
                 content = f.read()
                 return content.count("class ") - content.count("class _")
@@ -292,7 +292,7 @@ For detailed analysis and code locations, refer to the full checkpoint file with
 
 ### Backend Structure
 ```
-minimal-backend/
+backend/
 ├── main.py                    (entry point, router registration)
 ├── core/database.py           (26 SQLAlchemy models)
 ├── services/
@@ -306,7 +306,7 @@ minimal-backend/
 
 ### Frontend Structure
 ```
-gcp-stimulator-ui/
+frontend/
 ├── src/
 │   ├── pages/                 ({frontend.get('pages', 0)} pages)
 │   ├── components/            ({frontend.get('components', 0)} components)
@@ -355,10 +355,10 @@ gcp-stimulator-ui/
 
 ```bash
 # Start services
-cd /home/ubuntu/gcs-stimulator/minimal-backend && python main.py
+cd /home/ubuntu/gcs-stimulator/backend && python main.py
 
 # Start UI
-cd /home/ubuntu/gcs-stimulator/gcp-stimulator-ui && npm run dev
+cd /home/ubuntu/gcs-stimulator/frontend && npm run dev
 
 # Run all tests
 cd /home/ubuntu/gcs-stimulator && ./tests/run_full_suite.sh
@@ -385,7 +385,7 @@ python /home/ubuntu/gcs-stimulator/generate_context.py --level standard
 ## Full System Architecture
 
 ### Backend (Python FastAPI)
-- **Location**: /home/ubuntu/gcs-stimulator/minimal-backend/
+- **Location**: /home/ubuntu/gcs-stimulator/backend/
 - **Routers**: {backend['routers_registered']} registered
 - **Services**: {backend['services']} modules
 - **Models**: {backend['database_models']} database tables
@@ -408,7 +408,7 @@ python /home/ubuntu/gcs-stimulator/generate_context.py --level standard
    - Action history tracking
 
 ### Frontend (React + TypeScript)
-- **Location**: /home/ubuntu/gcs-stimulator/gcp-stimulator-ui/
+- **Location**: /home/ubuntu/gcs-stimulator/frontend/
 - **Pages**: {frontend.get('pages', 0)}
 - **Components**: {frontend.get('components', 0)}
 - **Bundle Size**: ~500KB (reduction to 300KB possible)
@@ -422,20 +422,20 @@ python /home/ubuntu/gcs-stimulator/generate_context.py --level standard
 ## Code Locations - Quick Reference
 
 **JavaScript Consolidation Targets**:
-- `/home/ubuntu/gcs-stimulator/gcp-stimulator-ui/src/components/` (30+ components)
-- `/home/ubuntu/gcs-stimulator/gcp-stimulator-ui/src/pages/` ({frontend.get('pages', 0)} pages)
-- `/home/ubuntu/gcs-stimulator/gcp-stimulator-ui/src/api/` (API wrappers)
+- `/home/ubuntu/gcs-stimulator/frontend/src/components/` (30+ components)
+- `/home/ubuntu/gcs-stimulator/frontend/src/pages/` ({frontend.get('pages', 0)} pages)
+- `/home/ubuntu/gcs-stimulator/frontend/src/api/` (API wrappers)
 
 **Cloud Run**:
-- Service router: `/home/ubuntu/gcs-stimulator/minimal-backend/services/run/router.py`
-- Database models: `/home/ubuntu/gcs-stimulator/minimal-backend/core/database.py` lines 299-360
-- UI Page: `/home/ubuntu/gcs-stimulator/gcp-stimulator-ui/src/pages/CloudRunDashboardPage.tsx`
+- Service router: `/home/ubuntu/gcs-stimulator/backend/services/run/router.py`
+- Database models: `/home/ubuntu/gcs-stimulator/backend/core/database.py` lines 299-360
+- UI Page: `/home/ubuntu/gcs-stimulator/frontend/src/pages/CloudRunDashboardPage.tsx`
 
 **Auto-Scaling**:
-- Router: `/home/ubuntu/gcs-stimulator/minimal-backend/services/autoscaling/router.py`
-- Evaluator: `/home/ubuntu/gcs-stimulator/minimal-backend/services/autoscaling/evaluator.py`
-- Storage: `/home/ubuntu/gcs-stimulator/minimal-backend/services/autoscaling/storage.py`
-- UI: `/home/ubuntu/gcs-stimulator/gcp-stimulator-ui/src/pages/MonitoringDashboard.tsx`
+- Router: `/home/ubuntu/gcs-stimulator/backend/services/autoscaling/router.py`
+- Evaluator: `/home/ubuntu/gcs-stimulator/backend/services/autoscaling/evaluator.py`
+- Storage: `/home/ubuntu/gcs-stimulator/backend/services/autoscaling/storage.py`
+- UI: `/home/ubuntu/gcs-stimulator/frontend/src/pages/MonitoringDashboard.tsx`
 
 ## Implementation Recommendations
 
@@ -474,11 +474,11 @@ python /home/ubuntu/gcs-stimulator/generate_context.py --level standard
 ### Development
 ```bash
 # Start backend
-cd /home/ubuntu/gcs-stimulator/minimal-backend
+cd /home/ubuntu/gcs-stimulator/backend
 python main.py
 
 # Start frontend (new terminal)
-cd /home/ubuntu/gcs-stimulator/gcp-stimulator-ui
+cd /home/ubuntu/gcs-stimulator/frontend
 npm run dev
 
 # Access UI

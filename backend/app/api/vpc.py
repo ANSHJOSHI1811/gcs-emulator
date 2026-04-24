@@ -281,11 +281,9 @@ def create_network(project: str, body: dict, db: Session = Depends(get_db)):
     Auto-mode uses 10.128.0.0/9 and auto-creates subnets per region
     Example: {"name": "my-vpc", "IPv4Range": "10.99.0.0/16", "autoCreateSubnetworks": false}
     """
-    import sys
-    sys.path.insert(0, '/home/ubuntu/gcs-stimulator/minimal-backend')
     from app.core.docker_manager import create_docker_network_with_cidr
-    from ip_manager import validate_cidr, get_gateway_ip
-    from region_subnets import get_auto_mode_subnets, is_auto_mode_cidr
+    from app.utils.ip_manager import validate_cidr, get_gateway_ip
+    from app.utils.region_subnets import get_auto_mode_subnets, is_auto_mode_cidr
     
     name = body["name"]
     auto_create = body.get("autoCreateSubnetworks", True)
@@ -449,9 +447,7 @@ def create_subnet(project: str, region: str, body: dict, db: Session = Depends(g
     Create subnet in VPC network
     Example: {"name": "web-subnet", "network": "custom-vpc", "ipCidrRange": "10.99.1.0/24"}
     """
-    import sys
-    sys.path.insert(0, '/home/ubuntu/gcs-stimulator/minimal-backend')
-    from ip_manager import validate_cidr, subnet_within_vpc, get_gateway_ip
+    from app.utils.ip_manager import validate_cidr, subnet_within_vpc, get_gateway_ip
     
     name = body.get("name")
     network_name = body.get("network", "").split("/")[-1]  # Extract name from URL

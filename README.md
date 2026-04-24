@@ -7,38 +7,90 @@ A **comprehensive Google Cloud Platform (GCP) emulator** that simulates GCP serv
 ## 📁 Project Structure
 
 ```
-gcs-stimulator/
+gcs-emulator/
 │
-├── minimal-backend/              # FastAPI Backend (Port 8080)
-│   ├── api/                      # API routes (storage, compute, vpc, iam)
-│   │   ├── storage.py           # Cloud Storage API
-│   │   ├── compute.py           # Compute Engine API
-│   │   ├── vpc.py               # VPC Networks API
-│   │   ├── routes.py            # Route Tables API
-│   │   └── projects.py          # Projects API
-│   ├── database.py              # SQLAlchemy models
-│   ├── docker_manager.py        # Docker container management
-│   ├── main.py                  # FastAPI application entry
-│   └── requirements.txt
+├── backend/                      # FastAPI Backend (Port 8080)
+│   ├── app/
+│   │   ├── api/                  # API routes (storage, compute, vpc, iam, firewall, gke)
+│   │   │   ├── storage.py       # Cloud Storage API
+│   │   │   ├── compute.py       # Compute Engine API
+│   │   │   ├── vpc.py           # VPC Networks API
+│   │   │   ├── routes.py        # Route Tables API
+│   │   │   ├── firewall.py      # Firewall Rules API
+│   │   │   ├── gke.py           # GKE Clusters API
+│   │   │   ├── iam.py           # IAM API
+│   │   │   └── projects.py      # Projects API
+│   │   ├── services/             # Business logic by service
+│   │   │   ├── compute/         # Compute Engine service
+│   │   │   ├── vpc/             # VPC Network service
+│   │   │   ├── iam/             # IAM service
+│   │   │   ├── gke/             # GKE service
+│   │   │   ├── monitoring/      # Cloud Monitoring service
+│   │   │   ├── autoscaling/     # Autoscaling service
+│   │   │   ├── pubsub/          # Cloud Pub/Sub service
+│   │   │   ├── run/             # Cloud Run service
+│   │   │   ├── artifacts/       # Artifact Registry service
+│   │   │   ├── secretmanager/   # Secret Manager service
+│   │   │   └── projects/        # Projects service
+│   │   ├── models/               # SQLAlchemy ORM models
+│   │   │   └── database.py
+│   │   ├── core/                 # Core utilities
+│   │   │   └── docker_manager.py # Docker lifecycle management
+│   │   ├── utils/                # Utility scripts
+│   │   │   ├── ip_manager.py
+│   │   │   ├── migrate_cidr.py
+│   │   │   ├── region_subnets.py
+│   │   │   └── sync_docker_instances.py
+│   │   └── main.py              # FastAPI entry point
+│   ├── database.py              # Backward-compatibility layer
+│   ├── core/                    # Legacy compatibility
+│   ├── requirements.txt         # Python dependencies
+│   └── README.md
 │
-├── gcp-stimulator-ui/            # React Frontend (Port 3000)
+├── frontend/                     # React + TypeScript Frontend (Port 3000)
 │   ├── src/
-│   │   ├── pages/               # Storage, Compute, VPC, IAM pages
+│   │   ├── pages/               # Service pages (Storage, Compute, VPC, IAM, Monitoring, etc.)
 │   │   ├── components/          # Reusable UI components
 │   │   ├── api/                 # API client functions
-│   │   └── contexts/            # React contexts
+│   │   ├── contexts/            # React context providers
+│   │   ├── hooks/               # Custom React hooks
+│   │   ├── layouts/             # Layout components
+│   │   ├── types/               # TypeScript interfaces
+│   │   ├── utils/               # Utility functions
+│   │   ├── config/              # Configuration
+│   │   ├── App.tsx              # Main app component
+│   │   └── main.tsx             # React entry point
 │   ├── package.json
-│   └── vite.config.ts
+│   ├── vite.config.ts
+│   ├── tailwind.config.js
+│   ├── Dockerfile
+│   ├── nginx.conf
+│   └── README.md
 │
-├── examples/                     # Usage examples
-│   ├── gcloud-cli.md            # gcloud CLI examples
-│   ├── python-sdk.md            # Python SDK examples
-│   └── rest-api.md              # REST API examples
+├── tests/                        # Test suites
+│   ├── integration/              # Integration tests (20+ test suites)
+│   ├── fixtures/                 # Test fixtures and utilities
+│   ├── gcloud_wrappers/          # gcloud CLI wrappers
+│   ├── scripts/                  # Test automation scripts
+│   ├── unit/                     # Unit tests (ready for expansion)
+│   ├── mocks/                    # Mock utilities (ready for expansion)
+│   ├── conftest.py
+│   └── README.md
 │
-├── GCLOUD_COMMANDS_REFERENCE.md # Complete gcloud commands guide
-├── DEMO_READY_CHECKLIST.md      # Pre-demo verification checklist
-├── DEMO_DAY_QUICK_START.md      # Step-by-step demo guide
-└── .env-gcloud                  # gcloud environment configuration
+├── docs/
+│   └── archived/                 # Archived documentation
+│
+├── Files/                        # Important reference documentation
+│   ├── CLAUDE.md
+│   ├── DEVELOPMENT_RULES.md
+│   ├── SKILLS_ROADMAP.md
+│   └── ...
+│
+├── CLAUDE.md                    # Project context and architecture
+├── IMPLEMENTATION_TRACKER.md    # Feature checklist
+├── README.md                    # This file
+├── pytest.ini                   # Pytest configuration
+└── .env-gcloud                  # gcloud CLI environment
 ```
 
 ## ✨ Features
@@ -105,13 +157,13 @@ gcs-stimulator/
 ### 1. Start Backend (Port 8080)
 
 ```bash
-cd /home/ubuntu/gcs-stimulator/minimal-backend
+cd /home/ubuntu/gcs-emulator/backend
 
 # Install Python dependencies
 pip install -r requirements.txt
 
-# Start FastAPI server
-nohup python3 main.py > /tmp/minimal-backend.log 2>&1 &
+# Start FastAPI server with hot-reload
+uvicorn app.main:app --reload --host 0.0.0.0 --port 8080
 
 # Verify backend is running
 curl http://localhost:8080/health
@@ -120,13 +172,13 @@ curl http://localhost:8080/health
 ### 2. Start Frontend (Port 3000)
 
 ```bash
-cd /home/ubuntu/gcs-stimulator/gcp-stimulator-ui
+cd /home/ubuntu/gcs-emulator/frontend
 
 # Install Node dependencies (first time only)
 npm install
 
 # Start Vite dev server
-nohup npm run dev -- --host 0.0.0.0 > /tmp/frontend.log 2>&1 &
+npm run dev -- --host 0.0.0.0
 
 # Access UI at: http://localhost:3000
 ```
@@ -401,15 +453,15 @@ Contributions welcome!
 ```bash
 # Clone repository
 git clone <repo-url>
-cd gcs-stimulator
+cd gcs-emulator
 
 # Start backend
-cd minimal-backend
+cd backend
 pip install -r requirements.txt
-python3 main.py
+uvicorn app.main:app --reload
 
 # Start frontend
-cd ../gcp-stimulator-ui
+cd ../frontend
 npm install
 npm run dev
 ```
