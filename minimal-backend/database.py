@@ -1,8 +1,8 @@
 """
-Backward-compatibility shim — all DB models live in core/database.py.
-Old api/ modules import from here; new services/ modules import from core.database.
+Backward-compatibility shim — all DB models live in app/models/database.py.
+Old imports like 'from database import Base' still work via this shim.
 """
-from core.database import (
+from app.models.database import (
     Base, engine, SessionLocal, get_db,
     # Compute
     Instance, Zone, MachineType, Address, Disk,

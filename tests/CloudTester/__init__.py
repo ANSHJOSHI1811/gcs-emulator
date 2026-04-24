@@ -1,1 +1,0 @@
-"""CloudTester - Integration & Unit Tests"""

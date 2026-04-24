@@ -1,50 +1,33 @@
-"""
-Backward-compatibility shim — all DB models now live in app/models/database.py.
-This file imports from there for backwards compatibility with old code paths.
-"""
-from app.models.database import (
-    Base, engine, SessionLocal, get_db,
-    # Compute models
-    Instance, Zone, MachineType, Address, Disk,
-    # Projects
-    Project,
-    # VPC models
-    Network, Subnet, Firewall, Route, CloudRouter, CloudNAT, VPCPeering,
-    # Storage models
-    SignedUrlSession, Bucket, Object,
-    # IAM models
-    ServiceAccount, IAMPolicyBinding, CustomRole, ServiceAccountKey,
-    # GKE models
-    GKECluster, GKENodePool, GKEAddon,
-    # Monitoring models
-    MetricDescriptor, TimeSeries, AlertPolicy,
-    # Pub/Sub models
-    PubSubTopic, PubSubSubscription, PubSubMessage,
-    # Cloud Run models
-    CloudRunService, CloudRunRevision,
-    # Artifact Registry models
-    ArtifactRegistry, ArtifactRepository, DockerImage,
-    # Autoscaling models
-    InstanceGroup, AutoscalingPolicy,
-    # Secret Manager models
-    Secret, SecretVersion,
-)
+"""Database models and connection"""
+from sqlalchemy import create_engine, Column, String, DateTime, JSON, Boolean, Integer, LargeBinary, text
+from sqlalchemy.ext.declarative import declarative_base
+from sqlalchemy.orm import sessionmaker
+from datetime import datetime
+import os
 
-__all__ = [
-    "Base", "engine", "SessionLocal", "get_db",
-    "Instance", "Zone", "MachineType", "Address", "Disk",
-    "Project",
-    "Network", "Subnet", "Firewall", "Route", "CloudRouter", "CloudNAT", "VPCPeering",
-    "SignedUrlSession", "Bucket", "Object",
-    "ServiceAccount", "IAMPolicyBinding", "CustomRole", "ServiceAccountKey",
-    "GKECluster", "GKENodePool", "GKEAddon",
-    "MetricDescriptor", "TimeSeries", "AlertPolicy",
-    "PubSubTopic", "PubSubSubscription", "PubSubMessage",
-    "CloudRunService", "CloudRunRevision",
-    "ArtifactRegistry", "ArtifactRepository", "DockerImage",
-    "InstanceGroup", "AutoscalingPolicy",
-    "Secret", "SecretVersion",
-]
+DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:////tmp/gcs_stimulator.db")
+
+# For SQLite, disable connection pooling and table naming constraints
+if DATABASE_URL.startswith("sqlite"):
+    engine = create_engine(DATABASE_URL, connect_args={"check_same_thread": False}, pool_pre_ping=True)
+else:
+    engine = create_engine(DATABASE_URL)
+SessionLocal = sessionmaker(bind=engine)
+Base = declarative_base()
+
+class Instance(Base):
+    """VM Instance = Docker Container"""
+    __tablename__ = "instances"
+    
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    name = Column(String, nullable=False)
+    project_id = Column(String, nullable=False)
+    zone = Column(String, nullable=False)
+    machine_type = Column(String, nullable=False)
+    status = Column(String, default="RUNNING")
+    container_id = Column(String)  # Docker container ID
+    container_name = Column(String)  # Docker container name
+    internal_ip = Column(String)
     external_ip = Column(String)
     network_url = Column(String, default="global/networks/default")
     subnetwork_url = Column(String)

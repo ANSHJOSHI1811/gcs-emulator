@@ -68,3 +68,15 @@ build/
 # OS
 .DS_Store
 Thumbs.db
+
+# Legacy (cleanup)
+tests/legacy/
+tests/CloudTester/
+
+# Backup files
+*.bak
+*.old
+*backup*
+
+# Project-specific
+/tmp/gcs-storage/
