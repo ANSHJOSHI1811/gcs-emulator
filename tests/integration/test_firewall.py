@@ -3,6 +3,8 @@ CloudTester - Firewall Tests
 Tests for Firewall Rules (Phase 1: Default rules creation)
 """
 
+from datetime import datetime
+
 import pytest
 
 pytestmark = pytest.mark.integration
@@ -147,3 +149,90 @@ class TestCustomFirewallRules:
         delete_resp = api_client.delete(delete_path)
         
         assert delete_resp.status_code in [200, 204]
+
+
+class TestFirewallValidation:
+    """Validate create and patch guardrails for firewall rules."""
+
+    def test_create_firewall_rule_invalid_priority(self, api_client, test_project):
+        path = f"/compute/v1/projects/{test_project}/global/firewalls"
+        payload = {
+            "name": f"invalid-priority-{datetime.now().strftime('%s')}",
+            "network": "default",
+            "direction": "INGRESS",
+            "priority": 70000,
+            "sourceRanges": ["0.0.0.0/0"],
+            "allowed": [{"IPProtocol": "tcp", "ports": ["80"]}],
+        }
+        resp = api_client.post(path, payload)
+        assert resp.status_code == 422
+
+    def test_create_firewall_rule_invalid_direction(self, api_client, test_project):
+        path = f"/compute/v1/projects/{test_project}/global/firewalls"
+        payload = {
+            "name": f"invalid-direction-{datetime.now().strftime('%s')}",
+            "network": "default",
+            "direction": "SIDEWAYS",
+            "priority": 1000,
+            "sourceRanges": ["0.0.0.0/0"],
+            "allowed": [{"IPProtocol": "tcp", "ports": ["80"]}],
+        }
+        resp = api_client.post(path, payload)
+        assert resp.status_code == 422
+
+    def test_create_firewall_rule_invalid_cidr(self, api_client, test_project):
+        path = f"/compute/v1/projects/{test_project}/global/firewalls"
+        payload = {
+            "name": f"invalid-cidr-{datetime.now().strftime('%s')}",
+            "network": "default",
+            "direction": "INGRESS",
+            "priority": 1000,
+            "sourceRanges": ["10.0.0.0/99"],
+            "allowed": [{"IPProtocol": "tcp", "ports": ["80"]}],
+        }
+        resp = api_client.post(path, payload)
+        assert resp.status_code == 422
+
+    def test_patch_firewall_rule_priority(self, api_client, test_project):
+        create_path = f"/compute/v1/projects/{test_project}/global/firewalls"
+        rule_name = f"patch-priority-{datetime.now().strftime('%s')}"
+        create_payload = {
+            "name": rule_name,
+            "network": "default",
+            "direction": "INGRESS",
+            "priority": 1000,
+            "sourceRanges": ["0.0.0.0/0"],
+            "allowed": [{"IPProtocol": "tcp", "ports": ["8080"]}],
+        }
+        create_resp = api_client.post(create_path, create_payload)
+        assert create_resp.status_code in [200, 201]
+
+        patch_path = f"/compute/v1/projects/{test_project}/global/firewalls/{rule_name}"
+        patch_resp = api_client.patch(patch_path, {"priority": 900})
+        assert patch_resp.status_code == 200
+
+        get_resp = api_client.get(patch_path)
+        assert get_resp.status_code == 200
+        assert get_resp.json().get("priority") == 900
+
+    def test_firewall_rules_list_by_network(self, api_client, test_project):
+        net_name = "default"
+        firewall_path = f"/compute/v1/projects/{test_project}/global/firewalls"
+        rule_name = f"filter-by-network-{datetime.now().strftime('%s')}"
+        create_fw_resp = api_client.post(
+            firewall_path,
+            {
+                "name": rule_name,
+                "network": net_name,
+                "direction": "INGRESS",
+                "priority": 1001,
+                "sourceRanges": ["0.0.0.0/0"],
+                "allowed": [{"IPProtocol": "tcp", "ports": ["22"]}],
+            },
+        )
+        assert create_fw_resp.status_code in [200, 201]
+
+        list_resp = api_client.get(f"{firewall_path}?network={net_name}")
+        assert list_resp.status_code == 200
+        items = list_resp.json().get("items", [])
+        assert any(item.get("name") == rule_name for item in items)

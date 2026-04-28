@@ -7,18 +7,18 @@ import random
 import ipaddress
 import docker
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 
 from app.models.database import (
     get_db, Network, Subnet, Instance,
     Firewall, Route, CloudRouter, CloudNAT, VPCPeering,
 )
-from ip_manager import validate_cidr, get_gateway_ip, get_ip_at_offset
+from app.utils.ip_manager import validate_cidr, get_gateway_ip, get_ip_at_offset
 
 from .models import (
     CreateNetworkRequest, CreateSubnetRequest, PatchSubnetRequest,
-    FirewallRequest, CreateRouteRequest,
+    CreateFirewallRequest, PatchFirewallRequest, CreateRouteRequest,
     CreateRouterRequest, CreateNATRequest,
     AddPeeringRequest, RemovePeeringRequest,
 )
@@ -304,7 +304,7 @@ def get_network(project: str, network_name: str, db: Session = Depends(get_db)):
 @router.post("/projects/{project}/global/networks")
 def create_network(project: str, body: CreateNetworkRequest, db: Session = Depends(get_db)):
     from app.core.docker_manager import create_docker_network_with_cidr
-    from region_subnets import get_auto_mode_subnets, is_auto_mode_cidr
+    from app.utils.region_subnets import get_auto_mode_subnets, is_auto_mode_cidr
 
     # Choose a non-overlapping CIDR; fall back to 10.200.0.0/16 to avoid colliding with default 10.128.0.0/16
     cidr_input = body.IPv4Range or "10.200.0.0/16"
@@ -492,8 +492,16 @@ def delete_subnet(project: str, region: str, subnet_name: str, db: Session = Dep
 # ────────────────────────────────────────────────────────
 
 @router.get("/projects/{project}/global/firewalls")
-def list_firewalls(project: str, db: Session = Depends(get_db)):
-    fws = db.query(Firewall).filter_by(project_id=project).all()
+def list_firewalls(
+    project: str,
+    network: str | None = Query(default=None),
+    db: Session = Depends(get_db),
+):
+    q = db.query(Firewall).filter_by(project_id=project)
+    if network:
+        network_name = network.split("/")[-1]
+        q = q.filter(Firewall.network.like(f"%/{network_name}"))
+    fws = q.all()
     return {"kind": "compute#firewallList",
             "items": [_fw_resource(fw, project) for fw in fws]}
 
@@ -507,7 +515,7 @@ def get_firewall(project: str, firewall_name: str, db: Session = Depends(get_db)
 
 
 @router.post("/projects/{project}/global/firewalls")
-def create_firewall(project: str, body: FirewallRequest, db: Session = Depends(get_db)):
+def create_firewall(project: str, body: CreateFirewallRequest, db: Session = Depends(get_db)):
     if db.query(Firewall).filter_by(name=body.name, project_id=project).first():
         raise HTTPException(409, f"Firewall {body.name} already exists")
     network_name = body.network.split("/")[-1]
@@ -519,7 +527,9 @@ def create_firewall(project: str, body: FirewallRequest, db: Session = Depends(g
         direction=body.direction, priority=body.priority,
         source_ranges=body.sourceRanges, destination_ranges=body.destinationRanges,
         source_tags=body.sourceTags, target_tags=body.targetTags,
-        allowed=body.allowed, denied=body.denied, disabled=body.disabled,
+        allowed=[rule.model_dump(exclude_none=True) for rule in body.allowed] if body.allowed else None,
+        denied=[rule.model_dump(exclude_none=True) for rule in body.denied] if body.denied else None,
+        disabled=body.disabled,
     )
     db.add(fw)
     db.commit()
@@ -528,7 +538,7 @@ def create_firewall(project: str, body: FirewallRequest, db: Session = Depends(g
 
 
 @router.patch("/projects/{project}/global/firewalls/{firewall_name}")
-def patch_firewall(project: str, firewall_name: str, body: FirewallRequest, db: Session = Depends(get_db)):
+def patch_firewall(project: str, firewall_name: str, body: PatchFirewallRequest, db: Session = Depends(get_db)):
     fw = db.query(Firewall).filter_by(name=firewall_name, project_id=project).first()
     if not fw:
         raise HTTPException(404, f"Firewall {firewall_name} not found")
@@ -539,6 +549,8 @@ def patch_firewall(project: str, firewall_name: str, body: FirewallRequest, db: 
                          ("denied", "denied"), ("disabled", "disabled")]:
         val = getattr(body, field, None)
         if val is not None:
+            if field in {"allowed", "denied"}:
+                val = [rule.model_dump(exclude_none=True) for rule in val]
             setattr(fw, attr, val)
     db.commit()
     return _op(project, "patch",

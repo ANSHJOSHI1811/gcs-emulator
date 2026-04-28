@@ -60,6 +60,16 @@ apiClient.interceptors.request.use(
 apiClient.interceptors.response.use(
   (response) => response,
   (error: AxiosError<{ error: { message: string } }>) => {
+    // Silently ignore requests that were intentionally aborted or canceled
+    // (e.g. when the user switches projects or navigates away)
+    if (
+      axios.isCancel(error) ||
+      error.message === 'Request aborted' ||
+      (error as any).code === 'ERR_CANCELED'
+    ) {
+      return Promise.reject(error);
+    }
+
     const { config } = error;
     const method = config?.method?.toUpperCase();
     const url = config?.url;

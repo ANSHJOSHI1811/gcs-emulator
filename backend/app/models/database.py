@@ -1,5 +1,5 @@
 """Database models and connection"""
-from sqlalchemy import create_engine, Column, String, DateTime, JSON, Boolean, Integer, LargeBinary, text
+from sqlalchemy import create_engine, Column, String, DateTime, JSON, Boolean, Integer, LargeBinary, text, UniqueConstraint
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
 from datetime import datetime
@@ -107,9 +107,10 @@ class Subnet(Base):
 class Firewall(Base):
     """Firewall rule for VPC Network"""
     __tablename__ = "firewalls"
+    __table_args__ = (UniqueConstraint('name', 'project_id', name='uq_firewall_name_project'),)
     
     id = Column(Integer, primary_key=True, autoincrement=True)
-    name = Column(String, nullable=False, unique=True)
+    name = Column(String, nullable=False)
     network = Column(String, nullable=False)  # Network reference
     project_id = Column(String, nullable=False)
     description = Column(String)

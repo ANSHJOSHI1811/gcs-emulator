@@ -11,12 +11,18 @@ export default defineConfig({
     },
   },
   server: {
+    host: '0.0.0.0',
     port: 3000,
+    strictPort: true,
     proxy: {
       '/api': {
         target: 'http://127.0.0.1:8080',
         changeOrigin: true,
         rewrite: (path) => path.replace(/^\/api/, ''),
+      },
+      '/compute': {
+        target: 'http://127.0.0.1:8080',
+        changeOrigin: true,
       },
       '/storage': {
         target: 'http://127.0.0.1:8080',
@@ -27,6 +33,38 @@ export default defineConfig({
         changeOrigin: true,
       },
       '/download': {
+        target: 'http://127.0.0.1:8080',
+        changeOrigin: true,
+      },
+      '/vpc': {
+        target: 'http://127.0.0.1:8080',
+        changeOrigin: true,
+      },
+      '/iam': {
+        target: 'http://127.0.0.1:8080',
+        changeOrigin: true,
+      },
+      '/monitoring': {
+        target: 'http://127.0.0.1:8080',
+        changeOrigin: true,
+      },
+      '/pubsub': {
+        target: 'http://127.0.0.1:8080',
+        changeOrigin: true,
+      },
+      '/run': {
+        target: 'http://127.0.0.1:8080',
+        changeOrigin: true,
+      },
+      '/gke': {
+        target: 'http://127.0.0.1:8080',
+        changeOrigin: true,
+      },
+      '/secretmanager': {
+        target: 'http://127.0.0.1:8080',
+        changeOrigin: true,
+      },
+      '/artifacts': {
         target: 'http://127.0.0.1:8080',
         changeOrigin: true,
       },

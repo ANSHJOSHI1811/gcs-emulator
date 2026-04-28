@@ -7,6 +7,17 @@
 
 ---
 
+## 🏗️ Core Architecture & Workflow
+
+Always remember the fundamental flow of this emulator:
+```text
+GCP SDK  → HTTP Request → GCP Simulator (FastAPI) → Local Storage
+                                                           ↓
+                                  GCP-compatible Response
+```
+
+---
+
 ## 🎯 Rule #1: Service Implementation Order (MANDATORY)
 
 When implementing a new GCP service, you MUST follow this sequence:
@@ -141,7 +152,8 @@ Before committing:
   ✅ Phase 1: gcloud wrappers complete + tests pass
   ✅ Phase 2: API implementation complete + tests pass
   ✅ Phase 3: Frontend implementation complete
-  ✅ Phase 4: All tests pass (gcloud + API + integration)
+  ✅ Phase 4: All tests pass for the new service (gcloud + API + integration)
+  ✅ Phase 5: FULL project test suite passes (bash tests/run_full_suite.sh)
   ✅ Documentation updated (README, CLAUDE.md)
   ✅ No console errors or warnings
   ✅ Code linting passes
@@ -617,10 +629,11 @@ Closes: #42
 
 ### Pre-Commit Checklist
 
-Before committing, run:
+Before committing, you MUST ensure no regressions were introduced. Run the FULL test suite:
 ```bash
-# 1. Run all tests for the service
-pytest tests/CloudTester/suites/{service}/ -v
+# 1. Run the FULL project test suite
+bash tests/run_full_suite.sh
+# (Do not just test the individual service)
 
 # 2. Run linting
 black minimal-backend/

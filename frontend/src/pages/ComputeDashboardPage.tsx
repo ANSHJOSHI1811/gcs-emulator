@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import axios from 'axios';
 import { Cpu, Server, Plus, StopCircle, Play, Trash2, Activity, ArrowRight, Network, HardDrive, Container, MapPin, Globe, Tag, Terminal, RefreshCw, X, ExternalLink } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { apiClient } from '../api/client';
@@ -92,10 +93,44 @@ const ComputeDashboardPage = () => {
   };
 
   useEffect(() => {
-    loadData();
+    const controller = new AbortController();
+    const signal = controller.signal;
+
+    const loadDataAbortable = async () => {
+      try {
+        const zonesRes = await apiClient.get(
+          `/compute/v1/projects/${currentProject}/zones`,
+          { signal }
+        );
+        if (signal.aborted) return;
+        const zones = zonesRes.data.items || [];
+
+        const instancePromises = zones.map((zone: any) =>
+          apiClient
+            .get(`/compute/v1/projects/${currentProject}/zones/${zone.name}/instances`, { signal })
+            .then(res => res.data.items || [])
+            .catch(() => [])
+        );
+
+        const instancesByZone = await Promise.all(instancePromises);
+        if (signal.aborted) return;
+        setInstances(instancesByZone.flat());
+        setError(null);
+      } catch (err: any) {
+        if (signal.aborted || axios.isCancel(err) || err?.message === 'Request aborted') return;
+        setError('Failed to load instances');
+      } finally {
+        if (!signal.aborted) setLoading(false);
+      }
+    };
+
+    loadDataAbortable();
     loadAddresses();
-    const interval = setInterval(loadData, 3000);
-    return () => clearInterval(interval);
+    const interval = setInterval(loadDataAbortable, 3000);
+    return () => {
+      controller.abort();
+      clearInterval(interval);
+    };
   }, [currentProject]);
 
   const loadAddresses = async () => {

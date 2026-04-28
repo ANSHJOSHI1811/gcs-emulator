@@ -21,7 +21,7 @@ from app.core.docker_manager import (
     create_container, stop_container, start_container,
     delete_container, get_container_status, ip_in_docker_network,
 )
-from ip_manager import get_ip_at_offset
+from app.utils.ip_manager import get_ip_at_offset
 
 from .models import (
     CreateInstanceRequest, SetTagsRequest, SetMetadataRequest,
@@ -75,6 +75,64 @@ def _global_op(project: str, region: str, op_type: str, target: str) -> dict:
         "user": "user@example.com",
         "progress": 100,
     }
+
+
+def _ensure_default_network_and_subnet(db: Session, project: str, region: str) -> Subnet:
+    """
+    Ensure default VPC network and subnet exist for the project.
+    Auto-creates them if missing. Returns the default subnet for the region.
+    """
+    # Ensure default network exists
+    default_network = db.query(Network).filter_by(project_id=project, name="default").first()
+    if not default_network:
+        default_network = Network(
+            name="default",
+            project_id=project,
+            auto_create_subnetworks=True,
+            cidr_range="10.128.0.0/16",
+            docker_network_name=f"gcp-vpc-{project}-default",
+        )
+        db.add(default_network)
+        db.commit()
+        db.refresh(default_network)
+    
+    # Ensure default subnet exists for this region
+    default_subnet = db.query(Subnet).filter_by(
+        project_id=project,
+        network="default",
+        region=region
+    ).first()
+    
+    if not default_subnet:
+        # Calculate CIDR range based on region (each region gets a /20 from 10.128.0.0/16)
+        # Map regions to their CIDR ranges
+        region_cidrs = {
+            "us-central1": "10.128.0.0/20",
+            "us-east1": "10.129.0.0/20",
+            "us-west1": "10.130.0.0/20",
+            "europe-west1": "10.131.0.0/20",
+            "asia-east1": "10.132.0.0/20",
+        }
+        subnet_cidr = region_cidrs.get(region, f"10.133.{hash(region) % 256}.0/20")
+        
+        # Calculate gateway IP (first usable IP in subnet: .1)
+        gateway_ip = subnet_cidr.rsplit(".", 1)[0] + ".1"
+        
+        subnet_name = f"default-{region}"
+        default_subnet = Subnet(
+            name=subnet_name,
+            project_id=project,
+            network="default",
+            region=region,
+            ip_cidr_range=subnet_cidr,
+            gateway_ip=gateway_ip,
+            next_available_ip=2,  # Start at .2 (skip .0 and .1)
+        )
+        db.add(default_subnet)
+        db.commit()
+        db.refresh(default_subnet)
+    
+    return default_subnet
 
 
 def _instance_resource(i: Instance, project: str) -> dict:
@@ -285,6 +343,11 @@ async def create_instance(project: str, zone: str, body: dict, db: Session = Dep
 
     # Resolve subnet by name or default to the subnet in the zone's region
     region = zone.rsplit('-', 1)[0]
+    
+    # Auto-ensure default network/subnet exist if using default
+    if subnet_name == "default" and (network_name is None or network_name == "default"):
+        _ensure_default_network_and_subnet(db, project, region)
+    
     if subnet_name == "default":
         network_name = network_name or "default"
         subnet_record = db.query(Subnet).filter_by(

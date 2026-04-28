@@ -1,7 +1,8 @@
 """Main FastAPI application"""
 import asyncio
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from app.middleware.auth import AuthBypassMiddleware
 from app.services.compute.router import router as compute_router
 from app.services.compute.instance_groups import router as instance_groups_router
 from app.services.vpc.router import router as vpc_router
@@ -36,6 +37,9 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# Auth Bypass Middleware — logs identity from every request, never blocks
+app.add_middleware(AuthBypassMiddleware)
+
 @app.get("/")
 def root():
     return {"message": "GCP Stimulator API", "version": "1.0.0"}
@@ -43,6 +47,16 @@ def root():
 @app.get("/health")
 def health():
     return {"status": "healthy"}
+
+@app.get("/auth/info")
+def auth_info(request: Request):
+    """Returns the current auth mode and resolved caller identity."""
+    return {
+        "mode": "bypass",
+        "identity": getattr(request.state, "user", "anonymous@stimulator"),
+        "auth_method": getattr(request.state, "auth_method", "none"),
+        "message": "All requests are accepted. Identity is extracted for logging only.",
+    }
 
 # Register routers with GCP API paths
 app.include_router(compute_router, prefix="/compute/v1", tags=["Compute Engine"])
@@ -133,6 +147,42 @@ def init_zones_and_machine_types(db):
     print(f"✅ Initialized {len(zones_data)} zones and {len(zones_data) * len(machine_types_data)} machine types")
 
 
+def initialize_default_projects(db):
+    """Create default projects if they don't exist"""
+    from app.models.database import Project
+    from datetime import datetime
+    
+    default_projects = [
+        {
+            "id": "test-project",
+            "name": "Test Project",
+            "project_number": 123456789
+        },
+        {
+            "id": "default",
+            "name": "Default Project",
+            "project_number": 987654321
+        }
+    ]
+    
+    for proj_data in default_projects:
+        existing = db.query(Project).filter(Project.id == proj_data["id"]).first()
+        if not existing:
+            project = Project(
+                id=proj_data["id"],
+                name=proj_data["name"],
+                project_number=proj_data["project_number"],
+                compute_api_enabled=True
+            )
+            db.add(project)
+            print(f"✅ Created default project: {proj_data['id']}")
+        else:
+            print(f"ℹ️  Project already exists: {proj_data['id']}")
+    
+    db.commit()
+    print(f"✅ Default projects initialized")
+
+
 @app.on_event("startup")
 async def startup_event():
     """Initialize database tables, default networks, and background tasks"""
@@ -144,6 +194,9 @@ async def startup_event():
     
     db = SessionLocal()
     try:
+        # Initialize default projects first
+        initialize_default_projects(db)
+        
         # Initialize zones and machine types
         init_zones_and_machine_types(db)
         

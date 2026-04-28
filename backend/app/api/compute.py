@@ -3,7 +3,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from app.models.database import get_db, Instance, Zone, MachineType, Project, Network, Subnet
 from app.core.docker_manager import create_container, stop_container, start_container, delete_container, get_container_status
-from ip_manager import get_ip_at_offset
+from app.utils.ip_manager import get_ip_at_offset
 import uuid
 import random
 
